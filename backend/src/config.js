@@ -49,7 +49,7 @@ const STAGE_MAP = {
   [`${BOARDS.INSURANCE}:2`]:  { id: "stuck_insurance",   phase: 2, label: "Under Review",                  visible: false, tier: 3 },
 
   // Welcome Call board
-  [`${BOARDS.WELCOME_CALL}:7`]: { id: "welcome_call",      phase: 3, label: "Scheduling Your Welcome Call",  visible: true,  tier: 2, code: "3A", condition: "gt24hrs" },
+  [`${BOARDS.WELCOME_CALL}:7`]: { id: "welcome_call",      phase: 3, label: "Scheduling Your Welcome Call",  visible: true,  tier: 3, code: "3A" },
   [`${BOARDS.WELCOME_CALL}:0`]: { id: "review_profile",    phase: 3, label: "Final Profile Confirmation",    visible: false, tier: 3, code: "3B" },
   [`${BOARDS.WELCOME_CALL}:4`]: { id: "completed",         phase: 3, label: "You're All Set!",               visible: true,  tier: 1, code: "3C" },
   [`${BOARDS.WELCOME_CALL}:2`]: { id: "stuck_welcome",     phase: 3, label: "Under Review",                  visible: false, tier: 3 },
@@ -66,8 +66,8 @@ const MESSAGES = {
   medical_complete: "Great news — your medical records have been reviewed and approved. We're now moving to the insurance verification step.",
   auth_outstanding: "Your prior authorization has been submitted to your insurance company. We're waiting on their decision — this typically takes 5–10 business days.",
   auth_denied: "Your insurance has requested additional information before approving your equipment. Our team is working on next steps and will be in touch.",
-  insurance_complete: "Your insurance has approved your equipment. We're almost there — a member of our team will reach out soon to finalize everything.",
-  welcome_call: "A member of our care team will be calling you soon to go over your equipment, answer any questions, and schedule your delivery.",
+  insurance_complete: "We're almost there!",
+  welcome_call: "",
   completed: "You're all set! Your equipment order has been placed. You'll receive delivery details shortly. Welcome to Medically Modern!"
 };
 
