@@ -9,7 +9,7 @@ async function mondayQuery(query, variables = {}) {
       "Authorization": MONDAY_TOKEN,
       "API-Version": "2024-10"
     },
-    body: JSON.stringify({ query, variables: JSON.stringify(variables) })
+    body: JSON.stringify({ query, variables })
   });
   const data = await res.json();
   if (data.errors) {
