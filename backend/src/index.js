@@ -6,6 +6,18 @@ const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, ME
 const { cachePatientState, getPatientState, findPatientByPhoneCache, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
+const fs = require("fs");
+const path = require("path");
+
+// Load portal HTML template for serving with dynamic OG tags
+let PORTAL_HTML = "";
+try {
+  PORTAL_HTML = fs.readFileSync(path.join(__dirname, "portal.html"), "utf8");
+  console.log("[portal] HTML template loaded");
+} catch (e) {
+  console.log("[portal] portal.html not found — /portal route will not work");
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -123,7 +135,7 @@ app.post("/webhooks/monday", async (req, res) => {
           if (msg0B && phone) {
             let fullMsg0B = msg0B;
             if (patientUid) {
-              fullMsg0B += `\n\nTrack your progress: ${PORTAL_BASE_URL}/?p=${patientUid}`;
+              fullMsg0B += `\n\nTrack your progress: ${PORTAL_BASE_URL}?p=${patientUid}`;
             }
             const sms0B = await sendSMS(phone, fullMsg0B, { patientName });
             await logNotification(itemId, "0B", msg0B);
@@ -165,7 +177,7 @@ app.post("/webhooks/monday", async (req, res) => {
           // Append portal link with patient UID
           let fullMessage = message;
           if (patientUid) {
-            fullMessage += `\n\nTrack your progress: ${PORTAL_BASE_URL}/?p=${patientUid}`;
+            fullMessage += `\n\nTrack your progress: ${PORTAL_BASE_URL}?p=${patientUid}`;
           }
           const smsResult = await sendSMS(phone, fullMessage, { patientName });
           await logNotification(itemId, patientStage.code, message);
@@ -425,6 +437,118 @@ app.get("/api/debug/cache/:itemId", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+
+
+// ─── OG Preview Image (simple branded card) ───
+app.get("/og-image.png", (req, res) => {
+  // Serve a simple SVG as the preview image
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#0B6E4F"/>
+        <stop offset="100%" stop-color="#2196A4"/>
+      </linearGradient>
+    </defs>
+    <rect width="1200" height="630" fill="url(#bg)"/>
+    <circle cx="1050" cy="100" r="200" fill="rgba(255,255,255,0.05)"/>
+    <circle cx="150" cy="530" r="150" fill="rgba(255,255,255,0.04)"/>
+    <text x="80" y="260" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="700" fill="white">Medically Modern</text>
+    <text x="80" y="320" font-family="system-ui, -apple-system, sans-serif" font-size="28" fill="rgba(255,255,255,0.8)">Patient Onboarding Portal</text>
+    <rect x="80" y="370" width="440" height="4" rx="2" fill="rgba(255,255,255,0.3)"/>
+    <text x="80" y="430" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="rgba(255,255,255,0.7)">Track your onboarding progress in real time.</text>
+    <text x="80" y="465" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="rgba(255,255,255,0.7)">Get updates at every step of the way.</text>
+  </svg>`;
+  
+  res.set("Content-Type", "image/svg+xml");
+  res.set("Cache-Control", "public, max-age=86400");
+  res.send(svg);
+});
+
+// ─── Portal page with dynamic Open Graph meta for iPhone previews ───
+app.get("/portal", async (req, res) => {
+  const uid = req.query.p;
+  
+  let ogTitle = "Medically Modern — Patient Portal";
+  let ogDescription = "Check your onboarding progress and stay updated on your equipment order.";
+  let ogImage = "https://patient-portal-backend-production.up.railway.app/og-image.png";
+  
+  if (uid) {
+    try {
+      // Try cache first, then Monday
+      let patient = await findPatientByUidCache(uid);
+      if (!patient) {
+        const mondayPatient = await findPatientByUid(uid);
+        if (mondayPatient) {
+          const stageCol = mondayPatient.column_values.find(c =>
+            c.id === "color_mm1wyr92" || c.id === "color_mm1ws96t"
+          );
+          let currentStage = null;
+          if (stageCol?.value) {
+            try {
+              const parsed = JSON.parse(stageCol.value);
+              const stageKey = `${mondayPatient.boardId}:${parsed.index}`;
+              currentStage = STAGE_MAP[stageKey];
+            } catch (e) {}
+          }
+          if (!currentStage) currentStage = REFERRAL_RECEIVED;
+          patient = {
+            name: mondayPatient.name,
+            stage_label: currentStage.label,
+            stage_code: currentStage.code,
+            phase: String(currentStage.phase),
+            message: MESSAGES[currentStage.id] || ""
+          };
+        }
+      }
+      
+      if (patient) {
+        const name = (patient.name || "").replace(/^\[TEST\]\s*/, "").split(" ")[0];
+        const stageLabel = patient.stage_label || "In Progress";
+        const phase = parseInt(patient.phase || "0");
+        
+        // Count progress
+        const allStages = 9; // total visible stages
+        const stageOrder = ["0B","1B","1D","1E","2C","2D","2E","3A","3C"];
+        const code = patient.stage_code || "0B";
+        let stageIdx = stageOrder.indexOf(code);
+        if (stageIdx === -1) {
+          // Non-visible stage, approximate
+          const mapping = { "1A": 0, "1C": 2, "2A": 3, "2B": 3, "3B": 7 };
+          stageIdx = mapping[code] ?? 0;
+        }
+        const stepNum = stageIdx + 1;
+        
+        ogTitle = name ? `${name} — ${stageLabel}` : stageLabel;
+        ogDescription = `Step ${stepNum} of ${allStages}: ${patient.message || stageLabel}`;
+      }
+    } catch (err) {
+      console.error("[portal] OG lookup error:", err.message);
+    }
+  }
+  
+  // Serve the frontend HTML with injected OG meta tags
+  const ogTags = `
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="${ogTitle.replace(/"/g, '&quot;')}">
+    <meta property="og:description" content="${ogDescription.replace(/"/g, '&quot;')}">
+    <meta property="og:site_name" content="Medically Modern">
+    <meta property="og:image" content="${ogImage}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${ogTitle.replace(/"/g, '&quot;')}">
+    <meta name="twitter:description" content="${ogDescription.replace(/"/g, '&quot;')}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Medically Modern">
+  `;
+  
+  // Read the HTML template and inject OG tags after <head>
+  const html = PORTAL_HTML.replace('<head>', '<head>' + ogTags);
+  
+  res.set('Content-Type', 'text/html');
+  res.send(html);
 });
 
 app.listen(PORT, () => {
