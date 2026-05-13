@@ -97,7 +97,40 @@ app.post("/webhooks/monday", async (req, res) => {
       const uidCol = item?.column_values?.find(c => Object.values(PATIENT_UID_COLUMNS).includes(c.id));
       const phone = phoneCol?.text || "";
       const patientName = item?.name || "";
-      const patientUid = uidCol?.text || "";
+      let patientUid = uidCol?.text || "";
+
+      // If item has no UID yet (e.g. created by Monday automation, not direct creation),
+      // assign one now. This is the fallback for when create_item webhook doesn't fire.
+      if (!patientUid) {
+        patientUid = crypto.randomUUID();
+        const uidColumnId = PATIENT_UID_COLUMNS[String(boardId)];
+        if (uidColumnId) {
+          try {
+            await updateColumn(String(boardId), itemId, uidColumnId, patientUid);
+            console.log(`[webhook] Auto-assigned UID ${patientUid} to item ${itemId} (no create_item event received)`);
+          } catch (uidErr) {
+            console.error(`[webhook] Failed to auto-assign UID: ${uidErr.message}`);
+            patientUid = ""; // Don't use a UID we couldn't persist
+          }
+        }
+
+        // If this is the first time we see this item on the Medical Eval board,
+        // also fire the 0B (Referral Received) notification — the create_item
+        // webhook was missed, so the patient never got their initial text.
+        if (String(boardId) === BOARDS.MEDICAL_EVAL && patientStage.code !== "0B") {
+          console.log(`[webhook] Automation-created item detected on Medical Eval — sending retroactive 0B notification`);
+          const msg0B = MESSAGES[REFERRAL_RECEIVED.id];
+          if (msg0B && phone) {
+            let fullMsg0B = msg0B;
+            if (patientUid) {
+              fullMsg0B += `\n\nTrack your progress: ${PORTAL_BASE_URL}/?p=${patientUid}`;
+            }
+            const sms0B = await sendSMS(phone, fullMsg0B, { patientName });
+            await logNotification(itemId, "0B", msg0B);
+            console.log(`[webhook] Retroactive 0B SMS: ${sms0B.sent ? "SENT" : sms0B.reason}`);
+          }
+        }
+      }
 
       // Update Redis cache
       await cachePatientState(itemId, {
