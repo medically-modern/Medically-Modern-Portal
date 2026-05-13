@@ -66,7 +66,7 @@ const MESSAGES = {
   medical_complete: "Great news — your medical records have been reviewed and approved. We're now moving to the insurance verification step.",
   auth_outstanding: "Your prior authorization has been submitted to your insurance company. We're waiting on their decision — this typically takes 5–10 business days.",
   auth_denied: "Your insurance has requested additional information before approving your equipment. Our team is working on next steps and will be in touch.",
-  insurance_complete: "We're almost there!",
+  insurance_complete: "We're almost there! Book a welcome call to finalize everything.",
   welcome_call: "",
   completed: "You're all set! Your equipment order has been placed. You'll receive delivery details shortly. Welcome to Medically Modern!"
 };
