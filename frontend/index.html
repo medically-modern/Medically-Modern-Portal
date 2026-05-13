@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medically Modern – Patient Portal</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafb; color: #1a2332; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .container { max-width: 420px; width: 90%; text-align: center; }
+    .logo { font-size: 1.5rem; font-weight: 700; color: #0066cc; margin-bottom: 0.5rem; }
+    .subtitle { color: #5a6978; font-size: 0.95rem; margin-bottom: 2rem; }
+    .card { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .card h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+    .phone-input { width: 100%; padding: 0.75rem 1rem; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+    .phone-input:focus { border-color: #0066cc; }
+    .btn { width: 100%; padding: 0.75rem; background: #0066cc; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 1rem; transition: background 0.2s; }
+    .btn:hover { background: #0052a3; }
+    .btn:disabled { background: #94a3b8; cursor: not-allowed; }
+    #status-view { display: none; }
+    .stage-tracker { text-align: left; margin-top: 1.5rem; }
+    .stage { padding: 0.75rem 0; border-left: 3px solid #e2e8f0; padding-left: 1.25rem; position: relative; }
+    .stage::before { content: ''; position: absolute; left: -7px; top: 0.85rem; width: 11px; height: 11px; border-radius: 50%; background: #e2e8f0; }
+    .stage.completed { border-left-color: #10b981; }
+    .stage.completed::before { background: #10b981; }
+    .stage.current { border-left-color: #0066cc; }
+    .stage.current::before { background: #0066cc; box-shadow: 0 0 0 4px rgba(0,102,204,0.2); }
+    .stage .label { font-weight: 600; font-size: 0.9rem; }
+    .stage .msg { color: #5a6978; font-size: 0.85rem; margin-top: 0.25rem; }
+    .error { color: #dc2626; font-size: 0.9rem; margin-top: 0.75rem; }
+    .back-link { margin-top: 1.5rem; color: #0066cc; cursor: pointer; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">Medically Modern</div>
+    <div class="subtitle">Patient Onboarding Portal</div>
+
+    <!-- Login view -->
+    <div id="login-view" class="card">
+      <h2>Check Your Status</h2>
+      <p style="color:#5a6978; font-size:0.9rem; margin-bottom:1rem;">Enter the phone number we have on file for you.</p>
+      <input type="tel" id="phone" class="phone-input" placeholder="(555) 123-4567" />
+      <button id="lookup-btn" class="btn" onclick="lookupStatus()">Look Up My Status</button>
+      <div id="login-error" class="error" style="display:none;"></div>
+    </div>
+
+    <!-- Status view -->
+    <div id="status-view" class="card">
+      <h2>Hi <span id="patient-name"></span>!</h2>
+      <p style="color:#5a6978; font-size:0.9rem;">Here's where things stand with your onboarding.</p>
+      <div id="current-message" style="background:#f0f7ff; border-radius:8px; padding:1rem; margin-top:1rem; text-align:left; font-size:0.9rem; color:#1a2332;"></div>
+      <div id="stage-tracker" class="stage-tracker"></div>
+      <div class="back-link" onclick="showLogin()">← Check another number</div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.hostname === 'localhost' 
+      ? 'http://localhost:3000' 
+      : 'https://your-railway-url.up.railway.app'; // TODO: update after Railway deploy
+
+    const VISIBLE_STAGES = [
+      { code: "0B", label: "Referral Received", phase: 0 },
+      { code: "1B", label: "Working With Your Doctor", phase: 1 },
+      { code: "1D", label: "Awaiting Medical Records", phase: 1 },
+      { code: "1E", label: "Medical Review Complete", phase: 1 },
+      { code: "2C", label: "Authorization Pending", phase: 2 },
+      { code: "2D", label: "Additional Info Requested", phase: 2 },
+      { code: "2E", label: "Insurance Approved", phase: 2 },
+      { code: "3A", label: "Scheduling Your Welcome Call", phase: 3 },
+      { code: "3C", label: "You're All Set!", phase: 3 },
+    ];
+
+    async function lookupStatus() {
+      const phone = document.getElementById('phone').value.replace(/\D/g, '');
+      const errEl = document.getElementById('login-error');
+      const btn = document.getElementById('lookup-btn');
+
+      if (phone.length < 10) {
+        errEl.textContent = 'Please enter a valid phone number.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Looking up...';
+      errEl.style.display = 'none';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/status/${phone}`);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Patient not found');
+        }
+        const data = await res.json();
+        renderStatus(data);
+      } catch (err) {
+        errEl.textContent = err.message === 'Patient not found' 
+          ? "We couldn't find that number in our system. Please try again or call our office."
+          : 'Something went wrong. Please try again.';
+        errEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Look Up My Status';
+      }
+    }
+
+    function renderStatus(data) {
+      document.getElementById('login-view').style.display = 'none';
+      document.getElementById('status-view').style.display = 'block';
+      document.getElementById('patient-name').textContent = data.patient.name;
+      document.getElementById('current-message').textContent = data.stage?.message || 'Your case is being processed.';
+
+      const tracker = document.getElementById('stage-tracker');
+      tracker.innerHTML = '';
+
+      const currentIdx = VISIBLE_STAGES.findIndex(s => s.code === data.stage?.code);
+
+      // Build a simplified tracker showing key milestones
+      const milestones = VISIBLE_STAGES.filter(s => ["0B","1E","2C","2E","3C"].includes(s.code) || s.code === data.stage?.code);
+      const uniqueMilestones = [...new Map(milestones.map(m => [m.code, m])).values()];
+
+      uniqueMilestones.forEach(stage => {
+        const stageIdx = VISIBLE_STAGES.findIndex(s => s.code === stage.code);
+        const div = document.createElement('div');
+        div.className = 'stage';
+        if (stageIdx < currentIdx) div.classList.add('completed');
+        if (stage.code === data.stage?.code) div.classList.add('current');
+        div.innerHTML = `<div class="label">${stage.label}</div>`;
+        tracker.appendChild(div);
+      });
+    }
+
+    function showLogin() {
+      document.getElementById('login-view').style.display = 'block';
+      document.getElementById('status-view').style.display = 'none';
+    }
+
+    // Allow Enter key to submit
+    document.getElementById('phone').addEventListener('keyup', e => {
+      if (e.key === 'Enter') lookupStatus();
+    });
+  </script>
+</body>
+</html>
