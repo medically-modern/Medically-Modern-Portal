@@ -1,44 +1,33 @@
 // SMS dispatch with safety checks
-// Blocks any sends to 555 numbers or test patterns
+// ONLY [TEST] patients receive texts during development
+// All real patients are blocked until production flag is flipped
 
-function isTestPhone(phone) {
-  const digits = phone.replace(/\D/g, "");
-  // Block 555 numbers (reserved for testing)
-  if (digits.includes("555")) return true;
-  // Block obviously fake numbers
-  if (digits.startsWith("0000") || digits.startsWith("1111")) return true;
-  return false;
-}
+const PRODUCTION_SMS_ENABLED = process.env.PRODUCTION_SMS_ENABLED === "true";
 
 function isTestPatient(name) {
   return name.startsWith("[TEST]") || name.toLowerCase().startsWith("test ");
 }
 
-async function sendSMS(phone, message, { patientName = "", dryRun = true } = {}) {
-  // Safety: never send to test numbers
-  if (isTestPhone(phone)) {
-    console.log(`[sms] BLOCKED (test phone ${phone}): "${message.substring(0, 60)}..."`);
-    return { sent: false, reason: "test_phone" };
+async function sendSMS(phone, message, { patientName = "" } = {}) {
+  const testPatient = isTestPatient(patientName);
+
+  // Real patients: blocked unless PRODUCTION_SMS_ENABLED=true
+  if (!testPatient && !PRODUCTION_SMS_ENABLED) {
+    console.log(`[sms] BLOCKED (real patient "${patientName}"): production SMS not enabled`);
+    return { sent: false, reason: "production_sms_disabled" };
   }
 
-  // Safety: never send to test patients
-  if (isTestPatient(patientName)) {
-    console.log(`[sms] BLOCKED (test patient ${patientName}): "${message.substring(0, 60)}..."`);
-    return { sent: false, reason: "test_patient" };
+  // Test patients: always allowed (log only for now, RingCentral not wired up yet)
+  if (testPatient) {
+    console.log(`[sms] TEST SEND → ${phone} (${patientName}): "${message.substring(0, 80)}..."`);
+    // TODO: wire up RingCentral here when ready
+    return { sent: false, reason: "ringcentral_not_configured", wouldSend: true };
   }
 
-  // Safety: dry run mode (default until RingCentral is wired up)
-  if (dryRun) {
-    console.log(`[sms] DRY RUN → ${phone}: "${message.substring(0, 60)}..."`);
-    return { sent: false, reason: "dry_run" };
-  }
-
+  // Production mode with real patient
+  console.log(`[sms] PRODUCTION SEND → ${phone}: "${message.substring(0, 80)}..."`);
   // TODO: actual RingCentral send
-  // const rc = require('./ringcentral');
-  // return rc.sendSMS(phone, message);
-  
-  console.log(`[sms] SENT → ${phone}: "${message.substring(0, 60)}..."`);
-  return { sent: true };
+  return { sent: false, reason: "ringcentral_not_configured", wouldSend: true };
 }
 
-module.exports = { sendSMS, isTestPhone, isTestPatient };
+module.exports = { sendSMS, isTestPatient, PRODUCTION_SMS_ENABLED };
