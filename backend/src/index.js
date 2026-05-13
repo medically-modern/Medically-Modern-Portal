@@ -115,7 +115,7 @@ app.get("/api/status/:phone", async (req, res) => {
 
     res.json({
       patient: {
-        name: patient.name.split(" ")[0], // First name only for privacy
+        name: patient.name.replace(/^\[TEST\]\s*/, "").split(" ")[0], // First name only for privacy
         itemId: patient.id,
         boardId: patient.boardId,
         group: patient.group?.title
