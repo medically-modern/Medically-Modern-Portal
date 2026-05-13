@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const { getItem, findPatientByPhone, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
-const { BOARDS, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS } = require("./config");
+const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS } = require("./config");
 const { cachePatientState, getPatientState, findPatientByPhoneCache, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
@@ -141,7 +141,12 @@ app.post("/webhooks/monday", async (req, res) => {
         }
 
         if (shouldSend && message) {
-          const smsResult = await sendSMS(phone, message, { patientName });
+          // Append portal link with patient UID
+          let fullMessage = message;
+          if (patientUid) {
+            fullMessage += `\n\nTrack your progress: ${PORTAL_BASE_URL}/?p=${patientUid}`;
+          }
+          const smsResult = await sendSMS(phone, fullMessage, { patientName });
           await logNotification(itemId, patientStage.code, message);
           console.log(`[webhook] SMS: ${smsResult.sent ? "SENT" : smsResult.reason} → ${patientStage.code}`);
         } else {

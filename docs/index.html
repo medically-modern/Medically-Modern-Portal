@@ -18,6 +18,7 @@
     .btn:hover { background: #0052a3; }
     .btn:disabled { background: #94a3b8; cursor: not-allowed; }
     #status-view { display: none; }
+    #loading-view { display: none; }
     .stage-tracker { text-align: left; margin-top: 1.5rem; }
     .stage { padding: 0.75rem 0; border-left: 3px solid #e2e8f0; padding-left: 1.25rem; position: relative; }
     .stage::before { content: ''; position: absolute; left: -7px; top: 0.85rem; width: 11px; height: 11px; border-radius: 50%; background: #e2e8f0; }
@@ -29,6 +30,8 @@
     .stage .msg { color: #5a6978; font-size: 0.85rem; margin-top: 0.25rem; }
     .error { color: #dc2626; font-size: 0.9rem; margin-top: 0.75rem; }
     .back-link { margin-top: 1.5rem; color: #0066cc; cursor: pointer; font-size: 0.9rem; }
+    .loading-spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: #0066cc; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -36,12 +39,18 @@
     <div class="logo">Medically Modern</div>
     <div class="subtitle">Patient Onboarding Portal</div>
 
+    <!-- Loading view (shown when arriving via ?p=uid link) -->
+    <div id="loading-view" class="card">
+      <div class="loading-spinner"></div>
+      <h2>Loading your status...</h2>
+    </div>
+
     <!-- Login view -->
     <div id="login-view" class="card">
       <h2>Check Your Status</h2>
       <p style="color:#5a6978; font-size:0.9rem; margin-bottom:1rem;">Enter the phone number we have on file for you.</p>
       <input type="tel" id="phone" class="phone-input" placeholder="(555) 123-4567" />
-      <button id="lookup-btn" class="btn" onclick="lookupStatus()">Look Up My Status</button>
+      <button id="lookup-btn" class="btn" onclick="lookupByPhone()">Look Up My Status</button>
       <div id="login-error" class="error" style="display:none;"></div>
     </div>
 
@@ -51,14 +60,11 @@
       <p style="color:#5a6978; font-size:0.9rem;">Here's where things stand with your onboarding.</p>
       <div id="current-message" style="background:#f0f7ff; border-radius:8px; padding:1rem; margin-top:1rem; text-align:left; font-size:0.9rem; color:#1a2332;"></div>
       <div id="stage-tracker" class="stage-tracker"></div>
-      <div class="back-link" onclick="showLogin()">← Check another number</div>
     </div>
   </div>
 
   <script>
-    const API_BASE = window.location.hostname === 'localhost' 
-      ? 'http://localhost:3000' 
-      : 'https://patient-portal-backend-production.up.railway.app'; // TODO: update after Railway deploy
+    const API_BASE = 'https://patient-portal-backend-production.up.railway.app';
 
     const VISIBLE_STAGES = [
       { code: "0B", label: "Referral Received", phase: 0 },
@@ -72,7 +78,33 @@
       { code: "3C", label: "You're All Set!", phase: 3 },
     ];
 
-    async function lookupStatus() {
+    // Check for UID in URL on page load
+    async function init() {
+      const params = new URLSearchParams(window.location.search);
+      const uid = params.get('p');
+
+      if (uid) {
+        // Arrived via SMS link — auto-lookup by UID
+        document.getElementById('login-view').style.display = 'none';
+        document.getElementById('loading-view').style.display = 'block';
+
+        try {
+          const res = await fetch(`${API_BASE}/api/status/uid/${uid}`);
+          if (!res.ok) throw new Error('not found');
+          const data = await res.json();
+          renderStatus(data);
+        } catch (err) {
+          // UID lookup failed — fall back to phone entry
+          document.getElementById('loading-view').style.display = 'none';
+          document.getElementById('login-view').style.display = 'block';
+          const errEl = document.getElementById('login-error');
+          errEl.textContent = "We couldn't load your status automatically. Please enter your phone number below.";
+          errEl.style.display = 'block';
+        }
+      }
+    }
+
+    async function lookupByPhone() {
       const phone = document.getElementById('phone').value.replace(/\D/g, '');
       const errEl = document.getElementById('login-error');
       const btn = document.getElementById('lookup-btn');
@@ -96,7 +128,7 @@
         const data = await res.json();
         renderStatus(data);
       } catch (err) {
-        errEl.textContent = err.message === 'Patient not found' 
+        errEl.textContent = err.message === 'Patient not found'
           ? "We couldn't find that number in our system. Please try again or call our office."
           : 'Something went wrong. Please try again.';
         errEl.style.display = 'block';
@@ -108,6 +140,7 @@
 
     function renderStatus(data) {
       document.getElementById('login-view').style.display = 'none';
+      document.getElementById('loading-view').style.display = 'none';
       document.getElementById('status-view').style.display = 'block';
       document.getElementById('patient-name').textContent = data.patient.name;
       document.getElementById('current-message').textContent = data.stage?.message || 'Your case is being processed.';
@@ -117,7 +150,6 @@
 
       const currentIdx = VISIBLE_STAGES.findIndex(s => s.code === data.stage?.code);
 
-      // Build a simplified tracker showing key milestones
       const milestones = VISIBLE_STAGES.filter(s => ["0B","1E","2C","2E","3C"].includes(s.code) || s.code === data.stage?.code);
       const uniqueMilestones = [...new Map(milestones.map(m => [m.code, m])).values()];
 
@@ -132,15 +164,13 @@
       });
     }
 
-    function showLogin() {
-      document.getElementById('login-view').style.display = 'block';
-      document.getElementById('status-view').style.display = 'none';
-    }
-
     // Allow Enter key to submit
     document.getElementById('phone').addEventListener('keyup', e => {
-      if (e.key === 'Enter') lookupStatus();
+      if (e.key === 'Enter') lookupByPhone();
     });
+
+    // Auto-init on page load
+    init();
   </script>
 </body>
 </html>
