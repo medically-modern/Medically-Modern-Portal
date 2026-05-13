@@ -112,4 +112,39 @@ async function moveItemToGroup(boardId, itemId, groupId) {
   return data.move_item_to_group;
 }
 
-module.exports = { mondayQuery, getItem, findPatientByPhone, createItem, updateColumn, changeStage, moveItemToGroup };
+module.exports = { mondayQuery, getItem, findPatientByPhone, findPatientByUid, createItem, updateColumn, changeStage, moveItemToGroup };
+
+// Find patient by UID across pipeline boards
+async function findPatientByUid(uid) {
+  const { BOARDS, PATIENT_UID_COLUMNS } = require("./config");
+  const boardIds = [BOARDS.WELCOME_CALL, BOARDS.INSURANCE, BOARDS.MEDICAL_EVAL, BOARDS.SUBSCRIPTION];
+
+  for (const boardId of boardIds) {
+    const uidColumnId = PATIENT_UID_COLUMNS[boardId];
+    if (!uidColumnId) continue;
+
+    const data = await mondayQuery(`{
+      boards(ids: [${boardId}]) {
+        items_page(limit: 500) {
+          items {
+            id name group { id title }
+            column_values(ids: ["${uidColumnId}", "phone_mm1x44yk", "color_mm1wyr92", "color_mm1ws96t", "date_mm1wf43j"]) {
+              id type text value
+            }
+          }
+        }
+      }
+    }`);
+
+    const board = data.boards?.[0];
+    if (!board) continue;
+
+    for (const item of board.items_page.items) {
+      const uidCol = item.column_values.find(c => c.id === uidColumnId);
+      if (uidCol?.text === uid) {
+        return { ...item, boardId };
+      }
+    }
+  }
+  return null;
+}

@@ -42,7 +42,8 @@ async function cachePatientState(itemId, state) {
     intake_date: state.intakeDate || "",
     phase: String(state.phase || 0),
     visible: state.visible ? "true" : "false",
-    message: state.message || ""
+    message: state.message || "",
+    patient_uid: state.patientUid || ""
   };
 
   await r.hmset(key, data);
@@ -106,6 +107,28 @@ async function indexPhone(phone, itemId) {
   }
 }
 
+
+
+// Find patient by UID in Redis (fast lookup for portal links)
+async function findPatientByUidCache(uid) {
+  const r = getRedis();
+  if (!r) return null;
+
+  const itemId = await r.get(`uid:${uid}`);
+  if (!itemId) return null;
+  return getPatientState(itemId);
+}
+
+// Index UID → itemId for fast lookups
+async function indexUid(uid, itemId) {
+  const r = getRedis();
+  if (!r) return;
+
+  if (uid) {
+    await r.set(`uid:${uid}`, String(itemId));
+    await r.expire(`uid:${uid}`, 60 * 60 * 24 * 90); // 90 day retention
+  }
+}
 // ─── Notification history ───
 // Append-only log per patient
 
@@ -150,7 +173,7 @@ async function redisHealthCheck() {
 
 module.exports = {
   getRedis, cachePatientState, getPatientState,
-  findPatientByPhoneCache, indexPhone,
+  findPatientByPhoneCache, findPatientByUidCache, indexPhone, indexUid,
   logNotification, getNotificationHistory,
   redisHealthCheck
 };

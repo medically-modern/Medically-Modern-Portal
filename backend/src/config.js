@@ -15,8 +15,17 @@ const STAGE_COLUMNS = {
 
 // Phone column (same ID across all boards)
 const PHONE_COLUMN = "phone_mm1x44yk";
+const PHONE_COLUMN_SUBSCRIPTION = "phone_mkp0q3cw";
 const NAME_COLUMN = "name";
 const INTAKE_DATE_COLUMN = "date_mm1wf43j";
+
+// Patient UID column IDs (persistent identifier across all boards)
+const PATIENT_UID_COLUMNS = {
+  [BOARDS.MEDICAL_EVAL]: "text_mm3ac5a0",
+  [BOARDS.INSURANCE]: "text_mm3a2b3n",
+  [BOARDS.WELCOME_CALL]: "text_mm3av5nt",
+  [BOARDS.SUBSCRIPTION]: "text_mm3af3zt"
+};
 
 // Map Monday.com (board + stage value index) → patient-facing stage
 const STAGE_MAP = {
@@ -65,6 +74,6 @@ const COMPLETED_GROUPS = {
 };
 
 module.exports = {
-  BOARDS, STAGE_COLUMNS, PHONE_COLUMN, NAME_COLUMN, INTAKE_DATE_COLUMN,
-  STAGE_MAP, REFERRAL_RECEIVED, MESSAGES, COMPLETED_GROUPS
+  BOARDS, STAGE_COLUMNS, PHONE_COLUMN, PHONE_COLUMN_SUBSCRIPTION, NAME_COLUMN, INTAKE_DATE_COLUMN,
+  PATIENT_UID_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, MESSAGES, COMPLETED_GROUPS
 };
