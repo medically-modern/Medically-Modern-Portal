@@ -1,7 +1,9 @@
 const express = require("express");
 const cors = require("cors");
 const { getItem, findPatientByPhone, mondayQuery } = require("./monday");
-const { BOARDS, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, MESSAGES, COMPLETED_GROUPS, PHONE_COLUMN } = require("./config");
+const { BOARDS, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, MESSAGES, COMPLETED_GROUPS } = require("./config");
+const { cachePatientState, getPatientState, findPatientByPhoneCache, indexPhone, logNotification, getNotificationHistory, redisHealthCheck } = require("./redis");
+const { sendSMS, isTestPatient } = require("./sms");
 
 const app = express();
 app.use(cors());
@@ -10,8 +12,14 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 // ─── Health check ───
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+app.get("/health", async (req, res) => {
+  const redis = await redisHealthCheck();
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    redis: redis.connected ? "connected" : `disconnected (${redis.reason})`,
+    monday: process.env.MONDAY_TOKEN ? "configured" : "MISSING"
+  });
 });
 
 // ─── Webhook receiver from Monday.com ───
@@ -36,11 +44,9 @@ app.post("/webhooks/monday", async (req, res) => {
     let patientStage = null;
 
     if (type === "create_item" && String(boardId) === BOARDS.MEDICAL_EVAL) {
-      // New item on Medical Eval board = Referral Received (0B)
       patientStage = REFERRAL_RECEIVED;
       console.log(`[webhook] New patient item ${itemId} → Referral Received`);
     } else if (type === "update_column_value") {
-      const columnId = event.columnId;
       const newValue = event.value?.label?.index ?? event.value?.index;
       const stageKey = `${boardId}:${newValue}`;
       patientStage = STAGE_MAP[stageKey];
@@ -51,22 +57,67 @@ app.post("/webhooks/monday", async (req, res) => {
         console.log(`[webhook] Item ${itemId} stage change not mapped: ${stageKey}`);
       }
     } else if (type === "move_item_to_group") {
-      // Check if moved to Completed group on Welcome Call
       const groupId = event.destGroupId;
       if (String(boardId) === BOARDS.WELCOME_CALL && groupId === COMPLETED_GROUPS[BOARDS.WELCOME_CALL]) {
-        patientStage = STAGE_MAP[`${BOARDS.WELCOME_CALL}:4`]; // Completed
+        patientStage = STAGE_MAP[`${BOARDS.WELCOME_CALL}:4`];
         console.log(`[webhook] Item ${itemId} moved to Completed → You're All Set!`);
       }
     }
 
     if (patientStage) {
-      // TODO: Redis cache update
-      // TODO: Notification dispatch (check tier, time gating, send via RingCentral)
-      console.log(`[webhook] Stage: ${patientStage.code} | Visible: ${patientStage.visible} | Tier: ${patientStage.tier}`);
-      
+      // Fetch item details from Monday for caching
+      const item = await getItem(itemId);
+      const phoneCol = item?.column_values?.find(c => c.id === "phone_mm1x44yk");
+      const intakeCol = item?.column_values?.find(c => c.id === "date_mm1wf43j");
+      const phone = phoneCol?.text || "";
+      const patientName = item?.name || "";
+
+      // Update Redis cache
+      const cached = await cachePatientState(itemId, {
+        phone,
+        name: patientName,
+        currentStage: patientStage.id,
+        stageCode: patientStage.code,
+        stageLabel: patientStage.label,
+        boardId: String(boardId),
+        phase: patientStage.phase,
+        visible: patientStage.visible,
+        message: MESSAGES[patientStage.id] || "",
+        intakeDate: intakeCol?.text || ""
+      });
+
+      // Index phone for fast lookups
+      if (phone) await indexPhone(phone, itemId);
+
+      console.log(`[webhook] Cached: ${patientStage.code} | Visible: ${patientStage.visible} | Tier: ${patientStage.tier}`);
+
+      // Notification dispatch
       if (patientStage.visible && patientStage.tier <= 2) {
         const message = MESSAGES[patientStage.id];
-        console.log(`[webhook] 📱 Would send SMS: "${message?.substring(0, 60)}..."`);
+
+        // Check conditional tier time gating
+        let shouldSend = patientStage.tier === 1; // Always send tier 1
+
+        if (patientStage.tier === 2) {
+          const existing = await getPatientState(itemId);
+          const lastNotified = existing?.last_notified_at;
+          if (!lastNotified) {
+            shouldSend = true;
+          } else {
+            const hoursSinceLast = (Date.now() - new Date(lastNotified).getTime()) / (1000 * 60 * 60);
+            if (patientStage.condition === "gt24hrs") shouldSend = hoursSinceLast > 24;
+            else if (patientStage.condition === "gt3days") shouldSend = hoursSinceLast > 72;
+            else shouldSend = true; // always_plus_call, etc.
+          }
+        }
+
+        if (shouldSend && message) {
+          const smsResult = await sendSMS(phone, message, { patientName });
+          await logNotification(itemId, patientStage.code, message);
+          console.log(`[webhook] SMS: ${smsResult.sent ? "SENT" : smsResult.reason} → ${patientStage.code}`);
+        } else {
+          console.log(`[webhook] SMS skipped (conditional tier, too recent)`);
+        }
       }
     }
 
@@ -81,17 +132,43 @@ app.post("/webhooks/monday", async (req, res) => {
 app.get("/api/status/:phone", async (req, res) => {
   try {
     const phone = req.params.phone;
-    const boardIds = [BOARDS.WELCOME_CALL, BOARDS.INSURANCE, BOARDS.MEDICAL_EVAL];
 
-    // Search boards in reverse order (latest board = furthest in pipeline)
+    // Try Redis cache first (fast path)
+    const cached = await findPatientByPhoneCache(phone);
+    if (cached) {
+      console.log(`[status] Cache HIT for ${phone}`);
+      const history = await getNotificationHistory(cached.item_id);
+      return res.json({
+        patient: {
+          name: cached.name.replace(/^\[TEST\]\s*/, "").split(" ")[0],
+          itemId: cached.item_id,
+          boardId: cached.board_id,
+        },
+        stage: {
+          code: cached.stage_code,
+          label: cached.stage_label,
+          phase: parseInt(cached.phase),
+          visible: cached.visible === "true",
+          message: cached.message
+        },
+        intakeDate: cached.intake_date || null,
+        notifications: { count: parseInt(cached.notification_count || 0), history },
+        lastUpdated: cached.stage_updated_at,
+        source: "cache"
+      });
+    }
+
+    // Cache miss — fall back to Monday.com API (slow path)
+    console.log(`[status] Cache MISS for ${phone}, querying Monday.com`);
+    const boardIds = [BOARDS.WELCOME_CALL, BOARDS.INSURANCE, BOARDS.MEDICAL_EVAL];
     const patient = await findPatientByPhone(phone, boardIds);
 
     if (!patient) {
       return res.status(404).json({ error: "Patient not found" });
     }
 
-    // Determine current stage from board + stage advancer value
-    const stageCol = patient.column_values.find(c => 
+    // Determine current stage
+    const stageCol = patient.column_values.find(c =>
       c.id === "color_mm1wyr92" || c.id === "color_mm1ws96t"
     );
 
@@ -106,16 +183,33 @@ app.get("/api/status/:phone", async (req, res) => {
       }
     }
 
-    // If on medical eval with no stage set, they just arrived = referral received
     if (!currentStage && String(patient.boardId) === BOARDS.MEDICAL_EVAL) {
       currentStage = REFERRAL_RECEIVED;
     }
 
     const intakeCol = patient.column_values.find(c => c.id === "date_mm1wf43j");
+    const phoneCol = patient.column_values.find(c => c.id === "phone_mm1x44yk");
+
+    // Hydrate Redis cache for next time
+    if (currentStage) {
+      await cachePatientState(patient.id, {
+        phone: phoneCol?.text || phone,
+        name: patient.name,
+        currentStage: currentStage.id,
+        stageCode: currentStage.code,
+        stageLabel: currentStage.label,
+        boardId: patient.boardId,
+        phase: currentStage.phase,
+        visible: currentStage.visible,
+        message: MESSAGES[currentStage.id] || "",
+        intakeDate: intakeCol?.text || ""
+      });
+      if (phoneCol?.text) await indexPhone(phoneCol.text, patient.id);
+    }
 
     res.json({
       patient: {
-        name: patient.name.replace(/^\[TEST\]\s*/, "").split(" ")[0], // First name only for privacy
+        name: patient.name.replace(/^\[TEST\]\s*/, "").split(" ")[0],
         itemId: patient.id,
         boardId: patient.boardId,
         group: patient.group?.title
@@ -128,7 +222,8 @@ app.get("/api/status/:phone", async (req, res) => {
         message: MESSAGES[currentStage.id]
       } : null,
       intakeDate: intakeCol?.text || null,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      source: "monday_api"
     });
   } catch (err) {
     console.error("[status] Error:", err);
@@ -136,7 +231,7 @@ app.get("/api/status/:phone", async (req, res) => {
   }
 });
 
-// ─── List all items on a board (for debugging) ───
+// ─── Debug endpoints ───
 app.get("/api/debug/board/:boardId", async (req, res) => {
   try {
     const data = await mondayQuery(`{
@@ -158,7 +253,18 @@ app.get("/api/debug/board/:boardId", async (req, res) => {
   }
 });
 
+app.get("/api/debug/cache/:itemId", async (req, res) => {
+  try {
+    const state = await getPatientState(req.params.itemId);
+    const history = await getNotificationHistory(req.params.itemId);
+    res.json({ cached: state, notifications: history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Portal backend running on port ${PORT}`);
-  console.log(`Monday token: ${process.env.MONDAY_TOKEN ? "set" : "MISSING"}`);
+  console.log(`Monday: ${process.env.MONDAY_TOKEN ? "configured" : "MISSING"}`);
+  console.log(`Redis: ${process.env.REDIS_URL ? "configured" : "MISSING (will fall back to Monday API)"}`);
 });
