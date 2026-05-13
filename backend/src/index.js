@@ -124,21 +124,9 @@ app.post("/webhooks/monday", async (req, res) => {
       if (patientStage.visible && patientStage.tier <= 2) {
         const message = MESSAGES[patientStage.id];
 
-        // Check conditional tier time gating
-        let shouldSend = patientStage.tier === 1; // Always send tier 1
-
-        if (patientStage.tier === 2) {
-          const existing = await getPatientState(itemId);
-          const lastNotified = existing?.last_notified_at;
-          if (!lastNotified) {
-            shouldSend = true;
-          } else {
-            const hoursSinceLast = (Date.now() - new Date(lastNotified).getTime()) / (1000 * 60 * 60);
-            if (patientStage.condition === "gt24hrs") shouldSend = hoursSinceLast > 24;
-            else if (patientStage.condition === "gt3days") shouldSend = hoursSinceLast > 72;
-            else shouldSend = true; // always_plus_call, etc.
-          }
-        }
+        // Send on every tier 1 and tier 2 advancement
+        // TODO: re-enable time gating (gt24hrs, gt3days) when going to production
+        const shouldSend = true;
 
         if (shouldSend && message) {
           // Append portal link with patient UID
