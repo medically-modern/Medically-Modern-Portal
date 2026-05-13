@@ -65,11 +65,22 @@ async function findPatientByPhoneCache(phone) {
   const r = getRedis();
   if (!r) return null;
 
-  // Check phone index
+  // Normalize to digits and try multiple formats
   const digits = phone.replace(/\D/g, "");
-  const itemId = await r.get(`phone:${digits}`);
+  
+  // Try exact digits first
+  let itemId = await r.get(`phone:${digits}`);
+  
+  // If 10 digits (no country code), also try with "1" prefix
+  if (!itemId && digits.length === 10) {
+    itemId = await r.get(`phone:1${digits}`);
+  }
+  // If 11 digits starting with 1, also try without country code
+  if (!itemId && digits.length === 11 && digits.startsWith("1")) {
+    itemId = await r.get(`phone:${digits.slice(1)}`);
+  }
+  
   if (!itemId) return null;
-
   return getPatientState(itemId);
 }
 
@@ -79,9 +90,19 @@ async function indexPhone(phone, itemId) {
   if (!r) return;
 
   const digits = phone.replace(/\D/g, "");
-  if (digits) {
-    await r.set(`phone:${digits}`, String(itemId));
-    await r.expire(`phone:${digits}`, 60 * 60 * 24 * 30);
+  if (!digits) return;
+
+  // Store under exact digits
+  await r.set(`phone:${digits}`, String(itemId));
+  await r.expire(`phone:${digits}`, 60 * 60 * 24 * 30);
+
+  // Also store the alternate format (with/without country code)
+  if (digits.length === 11 && digits.startsWith("1")) {
+    await r.set(`phone:${digits.slice(1)}`, String(itemId));
+    await r.expire(`phone:${digits.slice(1)}`, 60 * 60 * 24 * 30);
+  } else if (digits.length === 10) {
+    await r.set(`phone:1${digits}`, String(itemId));
+    await r.expire(`phone:1${digits}`, 60 * 60 * 24 * 30);
   }
 }
 
