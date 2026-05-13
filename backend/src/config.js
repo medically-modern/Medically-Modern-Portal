@@ -1,5 +1,5 @@
 // Portal frontend URL
-const PORTAL_BASE_URL = "https://patient-portal-backend-production.up.railway.app/portal";
+const PORTAL_BASE_URL = "https://medicallymodern.com/portal";
 
 // Monday.com board IDs
 const BOARDS = {
