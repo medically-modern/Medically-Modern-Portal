@@ -446,21 +446,12 @@ app.get("/api/debug/cache/:itemId", async (req, res) => {
 app.get("/og-image.png", async (req, res) => {
   const uid = req.query.p;
   const STAGE_ORDER = ["0B","1B","1D","1E","2C","2D","2E","3A","3C"];
-  const STAGE_LABELS = ["Referral\nReceived","Working With\nYour Doctor","Awaiting\nRecords","Medical Review\nComplete","Authorization\nPending","Additional Info\nRequested","Insurance\nApproved","Scheduling\nWelcome Call","You're\nAll Set!"];
-  const PHASE_LABELS = ["Medical Review", "Insurance", "Welcome & Delivery"];
-  // Phase boundaries: stages 0-3 = phase 0, 4-6 = phase 1, 7-8 = phase 2
-  const PHASE_RANGES = [[0,3],[4,6],[7,8]];
 
-  let patientName = "";
-  let stageLabel = "Patient Onboarding Portal";
   let activeIdx = -1;
-
   if (uid) {
     try {
       const cached = await findPatientByUidCache(uid);
       if (cached) {
-        patientName = (cached.name || "").replace(/^\[TEST\]\s*/, "").split(" ")[0];
-        stageLabel = cached.stage_label || "In Progress";
         const code = cached.stage_code || "0B";
         activeIdx = STAGE_ORDER.indexOf(code);
         if (activeIdx === -1) {
@@ -473,95 +464,78 @@ app.get("/og-image.png", async (req, res) => {
     }
   }
 
-  // Build progress dots
-  const dotStartX = 80;
-  const dotY = 380;
-  const dotSpacing = 115;
-  const dotR = 18;
+  // Build image using sharp compositing (no SVG text — avoids font issues on Railway)
+  const W = 1200, H = 630;
+  const dotR = 16, dotSpacing = 105, dotStartX = 145, dotY = 340;
 
-  let dotsAndLabels = "";
+  // Create gradient background
+  const gradientSvg = Buffer.from(`<svg width="${W}" height="${H}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0B6E4F"/><stop offset="100%" stop-color="#2196A4"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#g)"/></svg>`);
+
+  // Build dots as SVG overlay (shapes only, no text)
+  let dotsSvg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+
   for (let i = 0; i < 9; i++) {
     const cx = dotStartX + i * dotSpacing;
     const isCompleted = activeIdx >= 0 && i < activeIdx;
     const isActive = i === activeIdx;
-    const fill = isCompleted ? "#4ADE80" : isActive ? "#FFFFFF" : "rgba(255,255,255,0.25)";
-    const stroke = isActive ? "#4ADE80" : "none";
-    const strokeW = isActive ? 3 : 0;
-    const r = isActive ? dotR + 2 : dotR;
 
-    dotsAndLabels += `<circle cx="${cx}" cy="${dotY}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeW}"/>`;
-
-    // Checkmark for completed
-    if (isCompleted) {
-      dotsAndLabels += `<text x="${cx}" y="${dotY + 6}" text-anchor="middle" font-family="system-ui" font-size="20" font-weight="700" fill="#064A35">✓</text>`;
+    // Connector line (before dot, except first)
+    if (i > 0) {
+      const prevCx = dotStartX + (i - 1) * dotSpacing;
+      const lineColor = (activeIdx >= 0 && i <= activeIdx) ? "#4ADE80" : "rgba(255,255,255,0.2)";
+      dotsSvg += `<rect x="${prevCx + dotR + 6}" y="${dotY - 2}" width="${dotSpacing - 2 * dotR - 12}" height="4" rx="2" fill="${lineColor}"/>`;
     }
-    // Step number for active
+
     if (isActive) {
-      dotsAndLabels += `<text x="${cx}" y="${dotY + 7}" text-anchor="middle" font-family="system-ui" font-size="20" font-weight="700" fill="#0B6E4F">${i + 1}</text>`;
-    }
-
-    // Connector line between dots
-    if (i < 8) {
-      const lineColor = (activeIdx >= 0 && i < activeIdx) ? "#4ADE80" : "rgba(255,255,255,0.15)";
-      dotsAndLabels += `<rect x="${cx + r + 4}" y="${dotY - 2}" width="${dotSpacing - 2 * dotR - 8}" height="4" rx="2" fill="${lineColor}"/>`;
+      // Active: white filled with green ring
+      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="${dotR + 4}" fill="none" stroke="#4ADE80" stroke-width="3"/>`;
+      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="white"/>`;
+      // Green inner dot
+      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="6" fill="#0B6E4F"/>`;
+    } else if (isCompleted) {
+      // Completed: green filled with white checkmark shape
+      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="#4ADE80"/>`;
+      // Checkmark as path (no font needed)
+      dotsSvg += `<path d="M${cx - 6} ${dotY} L${cx - 1} ${dotY + 5} L${cx + 7} ${dotY - 5}" fill="none" stroke="#064A35" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+    } else {
+      // Future: dim circle
+      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="rgba(255,255,255,0.2)"/>`;
     }
   }
 
-  // Phase labels below dots
-  let phaseLabels = "";
-  for (let p = 0; p < 3; p++) {
-    const [start, end] = PHASE_RANGES[p];
-    const px = dotStartX + start * dotSpacing;
-    const pw = (end - start) * dotSpacing;
-    const midX = px + pw / 2;
-    const isActivePhase = activeIdx >= start && activeIdx <= end;
-    const opacity = isActivePhase ? 1 : 0.5;
-    phaseLabels += `<text x="${midX}" y="${dotY + 55}" text-anchor="middle" font-family="system-ui" font-size="18" font-weight="${isActivePhase ? 600 : 400}" fill="rgba(255,255,255,${opacity})">${PHASE_LABELS[p]}</text>`;
+  // Phase separator lines
+  const phase1End = dotStartX + 3 * dotSpacing + dotR + 20;
+  const phase2End = dotStartX + 6 * dotSpacing + dotR + 20;
+  dotsSvg += `<rect x="${phase1End}" y="${dotY - 30}" width="2" height="60" rx="1" fill="rgba(255,255,255,0.15)"/>`;
+  dotsSvg += `<rect x="${phase2End}" y="${dotY - 30}" width="2" height="60" rx="1" fill="rgba(255,255,255,0.15)"/>`;
+
+  // Progress bar at bottom
+  if (activeIdx >= 0) {
+    const progress = (activeIdx + 1) / 9;
+    const barW = W - 160;
+    dotsSvg += `<rect x="80" y="${H - 60}" width="${barW}" height="8" rx="4" fill="rgba(255,255,255,0.15)"/>`;
+    dotsSvg += `<rect x="80" y="${H - 60}" width="${Math.round(barW * progress)}" height="8" rx="4" fill="#4ADE80"/>`;
   }
 
-  // Progress fraction
-  const progressText = activeIdx >= 0 ? `Step ${activeIdx + 1} of 9` : "";
-  const headline = patientName || "Medically Modern";
-  const subtitle = patientName ? stageLabel : "Track your onboarding progress in real time.";
-
-  const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-    <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#0B6E4F"/>
-        <stop offset="100%" stop-color="#2196A4"/>
-      </linearGradient>
-    </defs>
-    <rect width="1200" height="630" fill="url(#bg)"/>
-    <circle cx="1080" cy="80" r="200" fill="rgba(255,255,255,0.04)"/>
-    <circle cx="120" cy="560" r="150" fill="rgba(255,255,255,0.03)"/>
-
-    <!-- Branding -->
-    <text x="80" y="80" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="600" fill="rgba(255,255,255,0.6)">MEDICALLY MODERN</text>
-    ${progressText ? `<text x="1120" y="80" text-anchor="end" font-family="system-ui" font-size="20" font-weight="500" fill="rgba(255,255,255,0.6)">${progressText}</text>` : ""}
-
-    <!-- Headline -->
-    <text x="80" y="190" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="700" fill="white">${headline}</text>
-    <text x="80" y="250" font-family="system-ui, -apple-system, sans-serif" font-size="30" fill="rgba(255,255,255,0.8)">${subtitle}</text>
-
-    <!-- Progress dots -->
-    ${dotsAndLabels}
-
-    <!-- Phase labels -->
-    ${phaseLabels}
-
-    <!-- Footer -->
-    <text x="80" y="570" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="rgba(255,255,255,0.4)">Patient Onboarding Portal</text>
-  </svg>`);
+  dotsSvg += `</svg>`;
 
   try {
-    const png = await sharp(svg).png().toBuffer();
+    const bg = await sharp(gradientSvg).png().toBuffer();
+    const overlay = await sharp(Buffer.from(dotsSvg)).png().toBuffer();
+
+    const png = await sharp(bg)
+      .composite([{ input: overlay, top: 0, left: 0 }])
+      .png()
+      .toBuffer();
+
     res.set("Content-Type", "image/png");
-    res.set("Cache-Control", "public, max-age=300"); // 5 min cache — dynamic per patient
+    res.set("Cache-Control", "public, max-age=300");
     res.send(png);
   } catch (err) {
-    console.error("[og-image] Sharp conversion failed:", err.message);
+    console.error("[og-image] Sharp error:", err.message);
+    // Fallback: serve a minimal SVG
     res.set("Content-Type", "image/svg+xml");
-    res.send(svg);
+    res.send(gradientSvg);
   }
 });
 
