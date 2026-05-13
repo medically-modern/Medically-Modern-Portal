@@ -6,108 +6,288 @@
   <title>Medically Modern – Patient Portal</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafb; color: #1a2332; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .container { max-width: 420px; width: 90%; text-align: center; }
-    .logo { font-size: 1.5rem; font-weight: 700; color: #0066cc; margin-bottom: 0.5rem; }
-    .subtitle { color: #5a6978; font-size: 0.95rem; margin-bottom: 2rem; }
-    .card { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .card h2 { font-size: 1.1rem; margin-bottom: 1rem; }
-    .phone-input { width: 100%; padding: 0.75rem 1rem; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #1a2332;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .header {
+      width: 100%;
+      background: white;
+      text-align: center;
+      padding: 1.5rem 1rem 1rem;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .logo { font-size: 1.4rem; font-weight: 700; color: #0066cc; }
+    .subtitle { color: #5a6978; font-size: 0.85rem; margin-top: 0.25rem; }
+
+    .container { max-width: 480px; width: 100%; padding: 0 1rem 2rem; }
+
+    /* ─── Login view ─── */
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      margin-top: 2rem;
+      text-align: center;
+    }
+    .card h2 { font-size: 1.05rem; margin-bottom: 1rem; color: #334155; }
+    .phone-input {
+      width: 100%; padding: 0.75rem 1rem;
+      border: 2px solid #e2e8f0; border-radius: 8px;
+      font-size: 1rem; outline: none; transition: border-color 0.2s;
+    }
     .phone-input:focus { border-color: #0066cc; }
-    .btn { width: 100%; padding: 0.75rem; background: #0066cc; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 1rem; transition: background 0.2s; }
+    .btn {
+      width: 100%; padding: 0.75rem;
+      background: #0066cc; color: white; border: none;
+      border-radius: 8px; font-size: 1rem; font-weight: 600;
+      cursor: pointer; margin-top: 1rem; transition: background 0.2s;
+    }
     .btn:hover { background: #0052a3; }
     .btn:disabled { background: #94a3b8; cursor: not-allowed; }
-    #status-view { display: none; }
-    #loading-view { display: none; }
-    .stage-tracker { text-align: left; margin-top: 1.5rem; }
-    .stage { padding: 0.75rem 0; border-left: 3px solid #e2e8f0; padding-left: 1.25rem; position: relative; }
-    .stage::before { content: ''; position: absolute; left: -7px; top: 0.85rem; width: 11px; height: 11px; border-radius: 50%; background: #e2e8f0; }
-    .stage.completed { border-left-color: #10b981; }
-    .stage.completed::before { background: #10b981; }
-    .stage.current { border-left-color: #0066cc; }
-    .stage.current::before { background: #0066cc; box-shadow: 0 0 0 4px rgba(0,102,204,0.2); }
-    .stage .label { font-weight: 600; font-size: 0.9rem; }
-    .stage .msg { color: #5a6978; font-size: 0.85rem; margin-top: 0.25rem; }
-    .error { color: #dc2626; font-size: 0.9rem; margin-top: 0.75rem; }
-    .back-link { margin-top: 1.5rem; color: #0066cc; cursor: pointer; font-size: 0.9rem; }
-    .loading-spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: #0066cc; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
+
+    /* ─── Loading ─── */
+    #loading-view { display: none; text-align: center; margin-top: 3rem; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #e2e8f0; border-top-color: #0066cc;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      margin: 0 auto 1rem;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Status view ─── */
+    #status-view { display: none; }
+
+    .greeting-card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-top: 1.25rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .greeting-card h2 {
+      font-size: 1.2rem;
+      color: #1a2332;
+      margin-bottom: 0.35rem;
+    }
+    .current-message {
+      background: #f0f7ff;
+      border-left: 3px solid #0066cc;
+      padding: 0.75rem 1rem;
+      border-radius: 0 8px 8px 0;
+      color: #334155;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      margin-top: 0.75rem;
+    }
+
+    /* ─── Phase sections ─── */
+    .phase-section {
+      background: white;
+      border-radius: 12px;
+      padding: 1.25rem 1.25rem 0.75rem;
+      margin-top: 0.75rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .phase-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.85rem;
+    }
+    .phase-number {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; color: white;
+      flex-shrink: 0;
+    }
+    .phase-number.completed { background: #10b981; }
+    .phase-number.current { background: #0066cc; }
+    .phase-number.upcoming { background: #cbd5e1; }
+    .phase-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #334155;
+    }
+    .phase-title.completed { color: #10b981; }
+    .phase-title.current { color: #0066cc; }
+    .phase-title.upcoming { color: #94a3b8; }
+
+    /* ─── Stage rows inside phase ─── */
+    .stage-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      position: relative;
+    }
+    .stage-row:not(:last-child) { border-bottom: 1px solid #f1f5f9; }
+
+    .stage-icon {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+      font-size: 0.7rem;
+    }
+    .stage-icon.completed { background: #d1fae5; color: #10b981; }
+    .stage-icon.current { background: #dbeafe; color: #0066cc; box-shadow: 0 0 0 3px rgba(0,102,204,0.15); }
+    .stage-icon.upcoming { background: #f1f5f9; color: #cbd5e1; }
+
+    .stage-icon svg { width: 12px; height: 12px; }
+
+    .stage-info { flex: 1; }
+    .stage-label {
+      font-size: 0.88rem;
+      font-weight: 500;
+      line-height: 1.3;
+    }
+    .stage-label.completed { color: #334155; }
+    .stage-label.current { color: #0066cc; font-weight: 600; }
+    .stage-label.upcoming { color: #94a3b8; }
+
+    .stage-desc {
+      font-size: 0.78rem;
+      color: #64748b;
+      margin-top: 0.15rem;
+      line-height: 1.4;
+    }
+    .stage-desc.upcoming { color: #cbd5e1; }
+
+    /* ─── Footer ─── */
+    .portal-footer {
+      text-align: center;
+      padding: 1.5rem 1rem;
+      color: #94a3b8;
+      font-size: 0.75rem;
+    }
+
+    /* ─── Error ─── */
+    .error { color: #dc2626; font-size: 0.85rem; margin-top: 0.75rem; display: none; }
   </style>
 </head>
 <body>
-  <div class="container">
+
+  <div class="header">
     <div class="logo">Medically Modern</div>
     <div class="subtitle">Patient Onboarding Portal</div>
+  </div>
 
-    <!-- Loading view (shown when arriving via ?p=uid link) -->
-    <div id="loading-view" class="card">
-      <div class="loading-spinner"></div>
-      <h2>Loading your status...</h2>
+  <div class="container">
+    <!-- Login View -->
+    <div id="login-view">
+      <div class="card">
+        <h2>Check Your Status</h2>
+        <input type="tel" id="phone" class="phone-input" placeholder="Enter your phone number" maxlength="14">
+        <button class="btn" onclick="lookupByPhone()">Look Up</button>
+        <div class="error" id="error-msg"></div>
+      </div>
     </div>
 
-    <!-- Login view -->
-    <div id="login-view" class="card">
-      <h2>Check Your Status</h2>
-      <p style="color:#5a6978; font-size:0.9rem; margin-bottom:1rem;">Enter the phone number we have on file for you.</p>
-      <input type="tel" id="phone" class="phone-input" placeholder="(555) 123-4567" />
-      <button id="lookup-btn" class="btn" onclick="lookupByPhone()">Look Up My Status</button>
-      <div id="login-error" class="error" style="display:none;"></div>
+    <!-- Loading View -->
+    <div id="loading-view">
+      <div class="spinner"></div>
+      <p style="color:#5a6978;">Loading your status...</p>
     </div>
 
-    <!-- Status view -->
-    <div id="status-view" class="card">
-      <h2>Hi <span id="patient-name"></span>!</h2>
-      <p style="color:#5a6978; font-size:0.9rem;">Here's where things stand with your onboarding.</p>
-      <div id="current-message" style="background:#f0f7ff; border-radius:8px; padding:1rem; margin-top:1rem; text-align:left; font-size:0.9rem; color:#1a2332;"></div>
-      <div id="stage-tracker" class="stage-tracker"></div>
+    <!-- Status View -->
+    <div id="status-view">
+      <div class="greeting-card">
+        <h2 id="patient-greeting">Hi!</h2>
+        <div class="current-message" id="current-message"></div>
+      </div>
+      <div id="roadmap"></div>
     </div>
+  </div>
+
+  <div class="portal-footer">
+    Questions? Call us at (800) 555-0199
   </div>
 
   <script>
     const API_BASE = 'https://patient-portal-backend-production.up.railway.app';
 
-    const VISIBLE_STAGES = [
-      { code: "0B", label: "Referral Received", phase: 0 },
-      { code: "1B", label: "Working With Your Doctor", phase: 1 },
-      { code: "1D", label: "Awaiting Medical Records", phase: 1 },
-      { code: "1E", label: "Medical Review Complete", phase: 1 },
-      { code: "2C", label: "Authorization Pending", phase: 2 },
-      { code: "2D", label: "Additional Info Requested", phase: 2 },
-      { code: "2E", label: "Insurance Approved", phase: 2 },
-      { code: "3A", label: "Scheduling Your Welcome Call", phase: 3 },
-      { code: "3C", label: "You're All Set!", phase: 3 },
+    // All stages that send texts, in order, grouped by phase
+    const PHASES = [
+      {
+        number: 1,
+        title: "Medical Review",
+        stages: [
+          { code: "0B", label: "Referral Received", desc: "We received your referral and started your case." },
+          { code: "1B", label: "Working With Your Doctor", desc: "Coordinating with your doctor for medical documentation." },
+          { code: "1D", label: "Awaiting Medical Records", desc: "Following up with your doctor's office for records." },
+          { code: "1E", label: "Medical Review Complete", desc: "Your medical records have been reviewed and approved." }
+        ]
+      },
+      {
+        number: 2,
+        title: "Insurance Verification",
+        stages: [
+          { code: "2C", label: "Authorization Pending", desc: "Prior authorization submitted to your insurance." },
+          { code: "2D", label: "Additional Info Requested", desc: "Insurance needs more information before approving." },
+          { code: "2E", label: "Insurance Approved", desc: "Your insurance has approved your equipment." }
+        ]
+      },
+      {
+        number: 3,
+        title: "Welcome & Delivery",
+        stages: [
+          { code: "3A", label: "Scheduling Your Welcome Call", desc: "Our care team will call to finalize everything." },
+          { code: "3C", label: "You're All Set!", desc: "Equipment order placed — delivery details coming soon." }
+        ]
+      }
     ];
 
-    // Check for UID in URL on page load
+    // Flatten all stage codes in order for index comparison
+    const ALL_CODES = PHASES.flatMap(p => p.stages.map(s => s.code));
+
+    function getStageIndex(code) {
+      const idx = ALL_CODES.indexOf(code);
+      if (idx !== -1) return idx;
+      // Non-visible stage — map by code prefix to approximate position
+      // 1A=after 0B, 1C=after 1B, 2A/2B=before 2C, 3B=before 3C
+      const mapping = { '1A': 0, '1C': 2, '2A': 3, '2B': 3, '3B': 7 };
+      return mapping[code] ?? 0;
+    }
+
+    // SVG icons
+    const checkSVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5L6.5 11.5L12.5 5"/></svg>';
+    const dotSVG = '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="3.5"/></svg>';
+    const circleSVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>';
+
     async function init() {
       const params = new URLSearchParams(window.location.search);
       const uid = params.get('p');
 
       if (uid) {
-        // Arrived via SMS link — auto-lookup by UID
         document.getElementById('login-view').style.display = 'none';
         document.getElementById('loading-view').style.display = 'block';
-
         try {
           const res = await fetch(`${API_BASE}/api/status/uid/${uid}`);
           if (!res.ok) throw new Error('not found');
           const data = await res.json();
           renderStatus(data);
         } catch (err) {
-          // UID lookup failed — fall back to phone entry
           document.getElementById('loading-view').style.display = 'none';
           document.getElementById('login-view').style.display = 'block';
-          const errEl = document.getElementById('login-error');
-          errEl.textContent = "We couldn't load your status automatically. Please enter your phone number below.";
-          errEl.style.display = 'block';
         }
       }
     }
 
     async function lookupByPhone() {
       const phone = document.getElementById('phone').value.replace(/\D/g, '');
-      const errEl = document.getElementById('login-error');
-      const btn = document.getElementById('lookup-btn');
+      const errEl = document.getElementById('error-msg');
+      errEl.style.display = 'none';
 
       if (phone.length < 10) {
         errEl.textContent = 'Please enter a valid phone number.';
@@ -115,26 +295,19 @@
         return;
       }
 
-      btn.disabled = true;
-      btn.textContent = 'Looking up...';
-      errEl.style.display = 'none';
+      document.getElementById('login-view').style.display = 'none';
+      document.getElementById('loading-view').style.display = 'block';
 
       try {
         const res = await fetch(`${API_BASE}/api/status/${phone}`);
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Patient not found');
-        }
+        if (!res.ok) throw new Error('not found');
         const data = await res.json();
         renderStatus(data);
       } catch (err) {
-        errEl.textContent = err.message === 'Patient not found'
-          ? "We couldn't find that number in our system. Please try again or call our office."
-          : 'Something went wrong. Please try again.';
+        document.getElementById('loading-view').style.display = 'none';
+        document.getElementById('login-view').style.display = 'block';
+        errEl.textContent = 'We couldn\'t find your record. Please check your number and try again.';
         errEl.style.display = 'block';
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Look Up My Status';
       }
     }
 
@@ -142,56 +315,83 @@
       document.getElementById('login-view').style.display = 'none';
       document.getElementById('loading-view').style.display = 'none';
       document.getElementById('status-view').style.display = 'block';
-      document.getElementById('patient-name').textContent = data.patient.name;
 
-      const tracker = document.getElementById('stage-tracker');
-      tracker.innerHTML = '';
+      // Greeting
+      document.getElementById('patient-greeting').textContent = `Hi ${data.patient.name}!`;
 
-      const stageCode = data.stage?.code || '0B';
-      const stagePhase = data.stage?.phase ?? 0;
+      // Current message
+      const msgEl = document.getElementById('current-message');
+      const currentCode = data.stage?.code || '0B';
+      const currentIdx = getStageIndex(currentCode);
 
-      // Find current position in visible stages
-      let currentIdx = VISIBLE_STAGES.findIndex(s => s.code === stageCode);
-
-      // If stage is non-visible (tier 3), find the last visible stage at or before this phase
-      if (currentIdx === -1) {
-        // Walk backwards through VISIBLE_STAGES to find the last one with phase <= current
-        for (let i = VISIBLE_STAGES.length - 1; i >= 0; i--) {
-          if (VISIBLE_STAGES[i].phase < stagePhase || 
-              (VISIBLE_STAGES[i].phase === stagePhase && VISIBLE_STAGES[i].code <= stageCode)) {
-            currentIdx = i;
-            break;
-          }
+      // Find the best message to show
+      let displayMessage = data.stage?.message;
+      if (!displayMessage) {
+        // Find the nearest stage description
+        const nearestCode = ALL_CODES[currentIdx];
+        for (const phase of PHASES) {
+          const s = phase.stages.find(st => st.code === nearestCode);
+          if (s) { displayMessage = s.desc; break; }
         }
-        // At minimum, Referral Received (0B) should be marked
-        if (currentIdx === -1) currentIdx = 0;
       }
+      msgEl.textContent = displayMessage || 'Your case is being processed.';
 
-      // Show message from current stage, or a sensible default
-      const message = data.stage?.message || VISIBLE_STAGES[currentIdx]?.message || 'Your case is being processed.';
-      document.getElementById('current-message').textContent = message || 'Your case is being processed.';
+      // Build roadmap
+      const roadmap = document.getElementById('roadmap');
+      roadmap.innerHTML = '';
 
-      // Milestones: always show key stages + current visible stage
-      const milestones = VISIBLE_STAGES.filter(s => ["0B","1E","2C","2E","3C"].includes(s.code) || s.code === stageCode);
-      const uniqueMilestones = [...new Map(milestones.map(m => [m.code, m])).values()];
+      PHASES.forEach(phase => {
+        const section = document.createElement('div');
+        section.className = 'phase-section';
 
-      uniqueMilestones.forEach(stage => {
-        const stageIdx = VISIBLE_STAGES.findIndex(s => s.code === stage.code);
-        const div = document.createElement('div');
-        div.className = 'stage';
-        if (stageIdx < currentIdx) div.classList.add('completed');
-        if (stageIdx === currentIdx) div.classList.add('current');
-        div.innerHTML = `<div class="label">${stage.label}</div>`;
-        tracker.appendChild(div);
+        // Determine phase status
+        const phaseStageIndices = phase.stages.map(s => ALL_CODES.indexOf(s.code));
+        const lastInPhase = Math.max(...phaseStageIndices);
+        const firstInPhase = Math.min(...phaseStageIndices);
+
+        let phaseStatus;
+        if (currentIdx > lastInPhase) phaseStatus = 'completed';
+        else if (currentIdx >= firstInPhase) phaseStatus = 'current';
+        else phaseStatus = 'upcoming';
+
+        section.innerHTML = `
+          <div class="phase-header">
+            <div class="phase-number ${phaseStatus}">${phase.number}</div>
+            <div class="phase-title ${phaseStatus}">${phase.title}</div>
+          </div>
+        `;
+
+        phase.stages.forEach(stage => {
+          const stageIdx = ALL_CODES.indexOf(stage.code);
+          let status;
+          if (stageIdx < currentIdx) status = 'completed';
+          else if (stageIdx === currentIdx) status = 'current';
+          else status = 'upcoming';
+
+          const row = document.createElement('div');
+          row.className = 'stage-row';
+
+          const icon = status === 'completed' ? checkSVG : (status === 'current' ? dotSVG : circleSVG);
+
+          row.innerHTML = `
+            <div class="stage-icon ${status}">${icon}</div>
+            <div class="stage-info">
+              <div class="stage-label ${status}">${stage.label}</div>
+              <div class="stage-desc ${status}">${stage.desc}</div>
+            </div>
+          `;
+
+          section.appendChild(row);
+        });
+
+        roadmap.appendChild(section);
       });
     }
 
-    // Allow Enter key to submit
     document.getElementById('phone').addEventListener('keyup', e => {
       if (e.key === 'Enter') lookupByPhone();
     });
 
-    // Auto-init on page load
     init();
   </script>
 </body>
