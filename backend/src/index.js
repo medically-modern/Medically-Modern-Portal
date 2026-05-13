@@ -8,6 +8,7 @@ const { sendSMS, isTestPatient } = require("./sms");
 
 const fs = require("fs");
 const path = require("path");
+const sharp = require("sharp");
 
 // Load portal HTML template for serving with dynamic OG tags
 let PORTAL_HTML = "";
@@ -441,10 +442,89 @@ app.get("/api/debug/cache/:itemId", async (req, res) => {
 
 
 
-// ─── OG Preview Image (simple branded card) ───
-app.get("/og-image.png", (req, res) => {
-  // Serve a simple SVG as the preview image
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+// ─── OG Preview Image (dynamic per-patient progress card, PNG for iOS) ───
+app.get("/og-image.png", async (req, res) => {
+  const uid = req.query.p;
+  const STAGE_ORDER = ["0B","1B","1D","1E","2C","2D","2E","3A","3C"];
+  const STAGE_LABELS = ["Referral\nReceived","Working With\nYour Doctor","Awaiting\nRecords","Medical Review\nComplete","Authorization\nPending","Additional Info\nRequested","Insurance\nApproved","Scheduling\nWelcome Call","You're\nAll Set!"];
+  const PHASE_LABELS = ["Medical Review", "Insurance", "Welcome & Delivery"];
+  // Phase boundaries: stages 0-3 = phase 0, 4-6 = phase 1, 7-8 = phase 2
+  const PHASE_RANGES = [[0,3],[4,6],[7,8]];
+
+  let patientName = "";
+  let stageLabel = "Patient Onboarding Portal";
+  let activeIdx = -1;
+
+  if (uid) {
+    try {
+      const cached = await findPatientByUidCache(uid);
+      if (cached) {
+        patientName = (cached.name || "").replace(/^\[TEST\]\s*/, "").split(" ")[0];
+        stageLabel = cached.stage_label || "In Progress";
+        const code = cached.stage_code || "0B";
+        activeIdx = STAGE_ORDER.indexOf(code);
+        if (activeIdx === -1) {
+          const mapping = { "1A": 0, "1C": 2, "2A": 4, "2B": 4, "3B": 8 };
+          activeIdx = mapping[code] ?? 0;
+        }
+      }
+    } catch (e) {
+      console.error("[og-image] Lookup error:", e.message);
+    }
+  }
+
+  // Build progress dots
+  const dotStartX = 80;
+  const dotY = 380;
+  const dotSpacing = 115;
+  const dotR = 18;
+
+  let dotsAndLabels = "";
+  for (let i = 0; i < 9; i++) {
+    const cx = dotStartX + i * dotSpacing;
+    const isCompleted = activeIdx >= 0 && i < activeIdx;
+    const isActive = i === activeIdx;
+    const fill = isCompleted ? "#4ADE80" : isActive ? "#FFFFFF" : "rgba(255,255,255,0.25)";
+    const stroke = isActive ? "#4ADE80" : "none";
+    const strokeW = isActive ? 3 : 0;
+    const r = isActive ? dotR + 2 : dotR;
+
+    dotsAndLabels += `<circle cx="${cx}" cy="${dotY}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeW}"/>`;
+
+    // Checkmark for completed
+    if (isCompleted) {
+      dotsAndLabels += `<text x="${cx}" y="${dotY + 6}" text-anchor="middle" font-family="system-ui" font-size="20" font-weight="700" fill="#064A35">✓</text>`;
+    }
+    // Step number for active
+    if (isActive) {
+      dotsAndLabels += `<text x="${cx}" y="${dotY + 7}" text-anchor="middle" font-family="system-ui" font-size="20" font-weight="700" fill="#0B6E4F">${i + 1}</text>`;
+    }
+
+    // Connector line between dots
+    if (i < 8) {
+      const lineColor = (activeIdx >= 0 && i < activeIdx) ? "#4ADE80" : "rgba(255,255,255,0.15)";
+      dotsAndLabels += `<rect x="${cx + r + 4}" y="${dotY - 2}" width="${dotSpacing - 2 * dotR - 8}" height="4" rx="2" fill="${lineColor}"/>`;
+    }
+  }
+
+  // Phase labels below dots
+  let phaseLabels = "";
+  for (let p = 0; p < 3; p++) {
+    const [start, end] = PHASE_RANGES[p];
+    const px = dotStartX + start * dotSpacing;
+    const pw = (end - start) * dotSpacing;
+    const midX = px + pw / 2;
+    const isActivePhase = activeIdx >= start && activeIdx <= end;
+    const opacity = isActivePhase ? 1 : 0.5;
+    phaseLabels += `<text x="${midX}" y="${dotY + 55}" text-anchor="middle" font-family="system-ui" font-size="18" font-weight="${isActivePhase ? 600 : 400}" fill="rgba(255,255,255,${opacity})">${PHASE_LABELS[p]}</text>`;
+  }
+
+  // Progress fraction
+  const progressText = activeIdx >= 0 ? `Step ${activeIdx + 1} of 9` : "";
+  const headline = patientName || "Medically Modern";
+  const subtitle = patientName ? stageLabel : "Track your onboarding progress in real time.";
+
+  const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
     <defs>
       <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stop-color="#0B6E4F"/>
@@ -452,18 +532,37 @@ app.get("/og-image.png", (req, res) => {
       </linearGradient>
     </defs>
     <rect width="1200" height="630" fill="url(#bg)"/>
-    <circle cx="1050" cy="100" r="200" fill="rgba(255,255,255,0.05)"/>
-    <circle cx="150" cy="530" r="150" fill="rgba(255,255,255,0.04)"/>
-    <text x="80" y="260" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="700" fill="white">Medically Modern</text>
-    <text x="80" y="320" font-family="system-ui, -apple-system, sans-serif" font-size="28" fill="rgba(255,255,255,0.8)">Patient Onboarding Portal</text>
-    <rect x="80" y="370" width="440" height="4" rx="2" fill="rgba(255,255,255,0.3)"/>
-    <text x="80" y="430" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="rgba(255,255,255,0.7)">Track your onboarding progress in real time.</text>
-    <text x="80" y="465" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="rgba(255,255,255,0.7)">Get updates at every step of the way.</text>
-  </svg>`;
-  
-  res.set("Content-Type", "image/svg+xml");
-  res.set("Cache-Control", "public, max-age=86400");
-  res.send(svg);
+    <circle cx="1080" cy="80" r="200" fill="rgba(255,255,255,0.04)"/>
+    <circle cx="120" cy="560" r="150" fill="rgba(255,255,255,0.03)"/>
+
+    <!-- Branding -->
+    <text x="80" y="80" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="600" fill="rgba(255,255,255,0.6)">MEDICALLY MODERN</text>
+    ${progressText ? `<text x="1120" y="80" text-anchor="end" font-family="system-ui" font-size="20" font-weight="500" fill="rgba(255,255,255,0.6)">${progressText}</text>` : ""}
+
+    <!-- Headline -->
+    <text x="80" y="190" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="700" fill="white">${headline}</text>
+    <text x="80" y="250" font-family="system-ui, -apple-system, sans-serif" font-size="30" fill="rgba(255,255,255,0.8)">${subtitle}</text>
+
+    <!-- Progress dots -->
+    ${dotsAndLabels}
+
+    <!-- Phase labels -->
+    ${phaseLabels}
+
+    <!-- Footer -->
+    <text x="80" y="570" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="rgba(255,255,255,0.4)">Patient Onboarding Portal</text>
+  </svg>`);
+
+  try {
+    const png = await sharp(svg).png().toBuffer();
+    res.set("Content-Type", "image/png");
+    res.set("Cache-Control", "public, max-age=300"); // 5 min cache — dynamic per patient
+    res.send(png);
+  } catch (err) {
+    console.error("[og-image] Sharp conversion failed:", err.message);
+    res.set("Content-Type", "image/svg+xml");
+    res.send(svg);
+  }
 });
 
 // ─── Portal page with dynamic Open Graph meta for iPhone previews ───
@@ -472,7 +571,9 @@ app.get("/portal", async (req, res) => {
   
   let ogTitle = "Medically Modern — Patient Portal";
   let ogDescription = "Check your onboarding progress and stay updated on your equipment order.";
-  let ogImage = "https://patient-portal-backend-production.up.railway.app/og-image.png";
+  let ogImage = uid
+    ? `https://patient-portal-backend-production.up.railway.app/og-image.png?p=${uid}`
+    : "https://patient-portal-backend-production.up.railway.app/og-image.png";
   
   if (uid) {
     try {
