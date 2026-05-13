@@ -428,6 +428,64 @@
       .welcome-banner h2 { font-size: 1.2rem; }
       .login-card { padding: 2rem 1.25rem; }
     }
+
+    /* ─── Load Animations ─── */
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes softPulse {
+      0%, 100% { box-shadow: 0 0 0 4px var(--current-glow); }
+      50% { box-shadow: 0 0 0 8px var(--current-glow); }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+    @keyframes gentleBounce {
+      0%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-3px); }
+      60% { transform: translateY(-1px); }
+    }
+
+    .anim-entry {
+      opacity: 0;
+      animation: fadeSlideUp 0.4s ease-out forwards;
+    }
+    .anim-fade {
+      opacity: 0;
+      animation: fadeIn 0.35s ease-out forwards;
+    }
+
+    /* Phase-specific active stage effects (subtle) */
+    .stage-dot.current.phase-1 {
+      animation: softPulse 2.5s ease-in-out infinite;
+    }
+    .stage-dot.current.phase-2 {
+      background: linear-gradient(90deg, var(--primary), var(--accent), var(--primary));
+      background-size: 200% 100%;
+      animation: shimmer 3s ease-in-out infinite;
+    }
+    .stage-dot.current.phase-3 {
+      animation: gentleBounce 2s ease-in-out infinite;
+    }
+
+    .welcome-banner {
+      opacity: 0;
+      animation: fadeSlideUp 0.45s ease-out forwards;
+    }
+    .message-card {
+      opacity: 0;
+      animation: fadeSlideUp 0.45s ease-out 0.1s forwards;
+    }
+    .roadmap-label {
+      opacity: 0;
+      animation: fadeIn 0.35s ease-out 0.2s forwards;
+    }
   </style>
 </head>
 <body>
@@ -690,8 +748,9 @@
 
           const item = document.createElement('div');
           item.className = `stage-item ${status}`;
+          const phaseClass = status === 'current' ? ` phase-${phase.number}` : '';
           item.innerHTML = `
-            <div class="stage-dot ${status}">${icon}</div>
+            <div class="stage-dot ${status}${phaseClass}">${icon}</div>
             <div class="stage-content">
               <div class="stage-name ${status}">${stage.label}</div>
               <div class="stage-detail ${status}">${stage.desc}</div>
@@ -701,6 +760,9 @@
         });
 
         card.appendChild(stagesList);
+        const phaseDelay = 0.15 + (PHASES.indexOf(phase) * 0.12);
+        card.style.opacity = '0';
+        card.style.animation = `fadeSlideUp 0.4s ease-out ${phaseDelay}s forwards`;
         roadmap.appendChild(card);
       });
     }
