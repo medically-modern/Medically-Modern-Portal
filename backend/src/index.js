@@ -442,100 +442,107 @@ app.get("/api/debug/cache/:itemId", async (req, res) => {
 
 
 
-// ─── OG Preview Image (dynamic per-patient progress card, PNG for iOS) ───
+// ─── OG Preview Images (pre-generated on startup — one PNG per stage) ───
+const OG_STAGE_ORDER = ["0B","1B","1D","1E","2C","2D","2E","3A","3C"];
+const NON_VISIBLE_MAP = { "1A": 0, "1C": 2, "2A": 4, "2B": 4, "3B": 8 };
+const ogImageCache = {}; // stage index → PNG buffer
+
+function buildOgSvg(activeIdx) {
+  const W = 1200, H = 630;
+  const dotR = 16, dotSpacing = 105, dotStartX = 145, dotY = 340;
+
+  let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+  // Gradient background
+  svg += `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">`;
+  svg += `<stop offset="0%" stop-color="#0B6E4F"/><stop offset="100%" stop-color="#2196A4"/>`;
+  svg += `</linearGradient></defs>`;
+  svg += `<rect width="${W}" height="${H}" fill="url(#g)"/>`;
+  // Decorative circles
+  svg += `<circle cx="1080" cy="80" r="200" fill="rgba(255,255,255,0.04)"/>`;
+  svg += `<circle cx="120" cy="560" r="150" fill="rgba(255,255,255,0.03)"/>`;
+
+  // Progress dots
+  for (let i = 0; i < 9; i++) {
+    const cx = dotStartX + i * dotSpacing;
+    const done = i < activeIdx;
+    const active = i === activeIdx;
+
+    // Connector line
+    if (i > 0) {
+      const prevCx = dotStartX + (i - 1) * dotSpacing;
+      const color = i <= activeIdx ? "#4ADE80" : "rgba(255,255,255,0.2)";
+      svg += `<rect x="${prevCx + dotR + 6}" y="${dotY - 2}" width="${dotSpacing - 2 * dotR - 12}" height="4" rx="2" fill="${color}"/>`;
+    }
+
+    if (active) {
+      svg += `<circle cx="${cx}" cy="${dotY}" r="${dotR + 4}" fill="none" stroke="#4ADE80" stroke-width="3"/>`;
+      svg += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="white"/>`;
+      svg += `<circle cx="${cx}" cy="${dotY}" r="6" fill="#0B6E4F"/>`;
+    } else if (done) {
+      svg += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="#4ADE80"/>`;
+      svg += `<path d="M${cx-6} ${dotY} L${cx-1} ${dotY+5} L${cx+7} ${dotY-5}" fill="none" stroke="#064A35" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+    } else {
+      svg += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="rgba(255,255,255,0.2)"/>`;
+    }
+  }
+
+  // Phase separators
+  svg += `<rect x="${dotStartX + 3*dotSpacing + dotR + 20}" y="${dotY-30}" width="2" height="60" rx="1" fill="rgba(255,255,255,0.15)"/>`;
+  svg += `<rect x="${dotStartX + 6*dotSpacing + dotR + 20}" y="${dotY-30}" width="2" height="60" rx="1" fill="rgba(255,255,255,0.15)"/>`;
+
+  // Progress bar
+  const barW = W - 160;
+  svg += `<rect x="80" y="${H-60}" width="${barW}" height="8" rx="4" fill="rgba(255,255,255,0.15)"/>`;
+  svg += `<rect x="80" y="${H-60}" width="${Math.round(barW * ((activeIdx+1)/9))}" height="8" rx="4" fill="#4ADE80"/>`;
+
+  svg += `</svg>`;
+  return Buffer.from(svg);
+}
+
+// Pre-generate all 9 stage images + 1 default on startup
+async function preGenerateOgImages() {
+  try {
+    for (let i = 0; i < 9; i++) {
+      const svgBuf = buildOgSvg(i);
+      ogImageCache[i] = await sharp(svgBuf).png().toBuffer();
+      console.log(`[og-image] Pre-generated stage ${i} (${OG_STAGE_ORDER[i]}): ${ogImageCache[i].length} bytes`);
+    }
+    // Default image (no active stage — all dim)
+    const defaultSvg = buildOgSvg(-1);
+    ogImageCache[-1] = await sharp(defaultSvg).png().toBuffer();
+    console.log(`[og-image] Pre-generated default: ${ogImageCache[-1].length} bytes`);
+    console.log("[og-image] All 10 images ready");
+  } catch (err) {
+    console.error("[og-image] Pre-generation failed:", err.message);
+  }
+}
+
 app.get("/og-image.png", async (req, res) => {
   const uid = req.query.p;
-  const STAGE_ORDER = ["0B","1B","1D","1E","2C","2D","2E","3A","3C"];
-
   let activeIdx = -1;
+
   if (uid) {
     try {
       const cached = await findPatientByUidCache(uid);
       if (cached) {
         const code = cached.stage_code || "0B";
-        activeIdx = STAGE_ORDER.indexOf(code);
-        if (activeIdx === -1) {
-          const mapping = { "1A": 0, "1C": 2, "2A": 4, "2B": 4, "3B": 8 };
-          activeIdx = mapping[code] ?? 0;
-        }
+        activeIdx = OG_STAGE_ORDER.indexOf(code);
+        if (activeIdx === -1) activeIdx = NON_VISIBLE_MAP[code] ?? 0;
       }
     } catch (e) {
       console.error("[og-image] Lookup error:", e.message);
     }
   }
 
-  // Build image using sharp compositing (no SVG text — avoids font issues on Railway)
-  const W = 1200, H = 630;
-  const dotR = 16, dotSpacing = 105, dotStartX = 145, dotY = 340;
-
-  // Create gradient background
-  const gradientSvg = Buffer.from(`<svg width="${W}" height="${H}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0B6E4F"/><stop offset="100%" stop-color="#2196A4"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#g)"/></svg>`);
-
-  // Build dots as SVG overlay (shapes only, no text)
-  let dotsSvg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
-
-  for (let i = 0; i < 9; i++) {
-    const cx = dotStartX + i * dotSpacing;
-    const isCompleted = activeIdx >= 0 && i < activeIdx;
-    const isActive = i === activeIdx;
-
-    // Connector line (before dot, except first)
-    if (i > 0) {
-      const prevCx = dotStartX + (i - 1) * dotSpacing;
-      const lineColor = (activeIdx >= 0 && i <= activeIdx) ? "#4ADE80" : "rgba(255,255,255,0.2)";
-      dotsSvg += `<rect x="${prevCx + dotR + 6}" y="${dotY - 2}" width="${dotSpacing - 2 * dotR - 12}" height="4" rx="2" fill="${lineColor}"/>`;
-    }
-
-    if (isActive) {
-      // Active: white filled with green ring
-      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="${dotR + 4}" fill="none" stroke="#4ADE80" stroke-width="3"/>`;
-      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="white"/>`;
-      // Green inner dot
-      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="6" fill="#0B6E4F"/>`;
-    } else if (isCompleted) {
-      // Completed: green filled with white checkmark shape
-      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="#4ADE80"/>`;
-      // Checkmark as path (no font needed)
-      dotsSvg += `<path d="M${cx - 6} ${dotY} L${cx - 1} ${dotY + 5} L${cx + 7} ${dotY - 5}" fill="none" stroke="#064A35" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
-    } else {
-      // Future: dim circle
-      dotsSvg += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="rgba(255,255,255,0.2)"/>`;
-    }
-  }
-
-  // Phase separator lines
-  const phase1End = dotStartX + 3 * dotSpacing + dotR + 20;
-  const phase2End = dotStartX + 6 * dotSpacing + dotR + 20;
-  dotsSvg += `<rect x="${phase1End}" y="${dotY - 30}" width="2" height="60" rx="1" fill="rgba(255,255,255,0.15)"/>`;
-  dotsSvg += `<rect x="${phase2End}" y="${dotY - 30}" width="2" height="60" rx="1" fill="rgba(255,255,255,0.15)"/>`;
-
-  // Progress bar at bottom
-  if (activeIdx >= 0) {
-    const progress = (activeIdx + 1) / 9;
-    const barW = W - 160;
-    dotsSvg += `<rect x="80" y="${H - 60}" width="${barW}" height="8" rx="4" fill="rgba(255,255,255,0.15)"/>`;
-    dotsSvg += `<rect x="80" y="${H - 60}" width="${Math.round(barW * progress)}" height="8" rx="4" fill="#4ADE80"/>`;
-  }
-
-  dotsSvg += `</svg>`;
-
-  try {
-    const bg = await sharp(gradientSvg).png().toBuffer();
-    const overlay = await sharp(Buffer.from(dotsSvg)).png().toBuffer();
-
-    const png = await sharp(bg)
-      .composite([{ input: overlay, top: 0, left: 0 }])
-      .png()
-      .toBuffer();
-
+  const png = ogImageCache[activeIdx] || ogImageCache[-1];
+  if (png) {
     res.set("Content-Type", "image/png");
     res.set("Cache-Control", "public, max-age=300");
     res.send(png);
-  } catch (err) {
-    console.error("[og-image] Sharp error:", err.message);
-    // Fallback: serve a minimal SVG
+  } else {
+    // Images not ready yet (server just started)
     res.set("Content-Type", "image/svg+xml");
-    res.send(gradientSvg);
+    res.send(buildOgSvg(activeIdx));
   }
 });
 
@@ -626,8 +633,10 @@ app.get("/portal", async (req, res) => {
   res.send(html);
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Portal backend running on port ${PORT}`);
   console.log(`Monday: ${process.env.MONDAY_TOKEN ? "configured" : "MISSING"}`);
   console.log(`Redis: ${process.env.REDIS_URL ? "configured" : "MISSING (will fall back to Monday API)"}`);
+  // Pre-generate OG preview images (10 PNGs cached in memory)
+  await preGenerateOgImages();
 });
