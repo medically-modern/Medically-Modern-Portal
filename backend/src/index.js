@@ -38,7 +38,8 @@ app.post("/webhooks/monday", async (req, res) => {
   console.log("[webhook] Event received:", JSON.stringify(event, null, 2));
 
   try {
-    const { boardId, itemId, type } = event;
+    const { boardId, pulseId, type } = event;
+    const itemId = pulseId || event.itemId; // Monday uses pulseId in webhooks
 
     // Determine the patient-facing stage
     let patientStage = null;
@@ -47,7 +48,20 @@ app.post("/webhooks/monday", async (req, res) => {
       patientStage = REFERRAL_RECEIVED;
       console.log(`[webhook] New patient item ${itemId} → Referral Received`);
     } else if (type === "update_column_value") {
-      const newValue = event.value?.label?.index ?? event.value?.index;
+      // Only process stage advancer column changes
+      const columnId = event.columnId;
+      const expectedColumn = STAGE_COLUMNS[String(boardId)];
+      if (expectedColumn && columnId !== expectedColumn) {
+        console.log(`[webhook] Ignoring column ${columnId} (not stage advancer ${expectedColumn})`);
+        return res.json({ status: "ignored", reason: "non-stage-column" });
+      }
+
+      // Monday may send value as string or object
+      let eventValue = event.value;
+      if (typeof eventValue === "string") {
+        try { eventValue = JSON.parse(eventValue); } catch(e) {}
+      }
+      const newValue = eventValue?.label?.index ?? eventValue?.index;
       const stageKey = `${boardId}:${newValue}`;
       patientStage = STAGE_MAP[stageKey];
 
