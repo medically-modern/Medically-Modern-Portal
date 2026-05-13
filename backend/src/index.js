@@ -515,7 +515,7 @@ app.get("/portal", async (req, res) => {
         let stageIdx = stageOrder.indexOf(code);
         if (stageIdx === -1) {
           // Non-visible stage, approximate
-          const mapping = { "1A": 0, "1C": 2, "2A": 3, "2B": 3, "3B": 7 };
+          const mapping = { "1A": 0, "1C": 2, "2A": 4, "2B": 4, "3B": 8 };
           stageIdx = mapping[code] ?? 0;
         }
         const stepNum = stageIdx + 1;

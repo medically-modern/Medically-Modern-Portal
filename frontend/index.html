@@ -608,7 +608,7 @@
     function getStageIndex(code) {
       const idx = ALL_CODES.indexOf(code);
       if (idx !== -1) return idx;
-      const mapping = { '1A': 0, '1C': 2, '2A': 3, '2B': 3, '3B': 7 };
+      const mapping = { '1A': 0, '1C': 2, '2A': 4, '2B': 4, '3B': 8 };
       return mapping[code] ?? 0;
     }
 
