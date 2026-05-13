@@ -4,228 +4,525 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Medically Modern – Patient Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --primary: #0B6E4F;
+      --primary-light: #E8F5F0;
+      --primary-mid: #D0EDE4;
+      --primary-dark: #064A35;
+      --accent: #2196A4;
+      --accent-light: #E3F6F8;
+      --surface: #FFFFFF;
+      --bg: #F7FAF9;
+      --text-primary: #1B2B3A;
+      --text-secondary: #4A6274;
+      --text-muted: #8A9DAD;
+      --border: #E4EBF0;
+      --border-light: #F0F4F3;
+      --success: #0B6E4F;
+      --success-bg: #E8F5F0;
+      --current-glow: rgba(11, 110, 79, 0.12);
+      --shadow-sm: 0 1px 3px rgba(27,43,58,0.04), 0 1px 2px rgba(27,43,58,0.06);
+      --shadow-md: 0 4px 16px rgba(27,43,58,0.06), 0 1px 3px rgba(27,43,58,0.04);
+      --shadow-lg: 0 8px 30px rgba(27,43,58,0.08), 0 2px 8px rgba(27,43,58,0.04);
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f0f4f8;
-      color: #1a2332;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
+    /* ─── Header ─── */
     .header {
-      width: 100%;
-      background: white;
-      text-align: center;
-      padding: 1.5rem 1rem 1rem;
-      border-bottom: 1px solid #e2e8f0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border-light);
+      padding: 1rem 1.25rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(12px);
+      background: rgba(255,255,255,0.92);
     }
-    .logo { font-size: 1.4rem; font-weight: 700; color: #0066cc; }
-    .subtitle { color: #5a6978; font-size: 0.85rem; margin-top: 0.25rem; }
+    .header-inner {
+      max-width: 520px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .logo-mark {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-mark svg { width: 20px; height: 20px; }
+    .logo-text {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+    }
+    .logo-text span { color: var(--primary); }
 
-    .container { max-width: 480px; width: 100%; padding: 0 1rem 2rem; }
+    /* ─── Layout ─── */
+    .container {
+      max-width: 520px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 1rem 3rem;
+    }
 
-    /* ─── Login view ─── */
-    .card {
-      background: white;
-      border-radius: 12px;
-      padding: 2rem;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    /* ─── Login Card ─── */
+    .login-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 2.5rem 1.75rem;
+      box-shadow: var(--shadow-md);
       margin-top: 2rem;
       text-align: center;
     }
-    .card h2 { font-size: 1.05rem; margin-bottom: 1rem; color: #334155; }
+    .login-icon {
+      width: 56px; height: 56px;
+      background: var(--primary-light);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.25rem;
+    }
+    .login-icon svg { width: 26px; height: 26px; color: var(--primary); }
+    .login-card h2 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 0.35rem;
+      letter-spacing: -0.02em;
+    }
+    .login-card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+    }
+    .input-group { position: relative; }
     .phone-input {
-      width: 100%; padding: 0.75rem 1rem;
-      border: 2px solid #e2e8f0; border-radius: 8px;
-      font-size: 1rem; outline: none; transition: border-color 0.2s;
+      width: 100%;
+      padding: 0.85rem 1rem 0.85rem 2.75rem;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 1rem;
+      font-family: 'Inter', sans-serif;
+      color: var(--text-primary);
+      outline: none;
+      transition: all 0.2s ease;
+      background: var(--bg);
     }
-    .phone-input:focus { border-color: #0066cc; }
+    .phone-input:focus {
+      border-color: var(--primary);
+      background: var(--surface);
+      box-shadow: 0 0 0 3px var(--current-glow);
+    }
+    .phone-input::placeholder { color: var(--text-muted); }
+    .input-icon {
+      position: absolute;
+      left: 0.85rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+    }
+    .input-icon svg { width: 18px; height: 18px; }
     .btn {
-      width: 100%; padding: 0.75rem;
-      background: #0066cc; color: white; border: none;
-      border-radius: 8px; font-size: 1rem; font-weight: 600;
-      cursor: pointer; margin-top: 1rem; transition: background 0.2s;
+      width: 100%;
+      padding: 0.85rem;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 0.95rem;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      margin-top: 0.85rem;
+      transition: all 0.2s ease;
+      letter-spacing: -0.01em;
     }
-    .btn:hover { background: #0052a3; }
-    .btn:disabled { background: #94a3b8; cursor: not-allowed; }
+    .btn:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { background: var(--text-muted); cursor: not-allowed; transform: none; }
+    .error { color: #C53030; font-size: 0.82rem; margin-top: 0.65rem; display: none; background: #FFF5F5; padding: 0.5rem 0.75rem; border-radius: 6px; }
 
     /* ─── Loading ─── */
-    #loading-view { display: none; text-align: center; margin-top: 3rem; }
-    .spinner {
-      width: 36px; height: 36px;
-      border: 3px solid #e2e8f0; border-top-color: #0066cc;
-      border-radius: 50%; animation: spin 0.8s linear infinite;
-      margin: 0 auto 1rem;
+    #loading-view { display: none; text-align: center; padding-top: 4rem; }
+    .loading-pulse {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: var(--primary-light);
+      margin: 0 auto 1.25rem;
+      animation: pulse 1.4s ease-in-out infinite;
+      display: flex; align-items: center; justify-content: center;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-pulse::after {
+      content: '';
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--primary);
+      animation: pulse-inner 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: 0.7; } }
+    @keyframes pulse-inner { 0%, 100% { transform: scale(1); } 50% { transform: scale(0.8); } }
+    .loading-text { color: var(--text-secondary); font-size: 0.9rem; }
 
-    /* ─── Status view ─── */
+    /* ─── Status View ─── */
     #status-view { display: none; }
 
-    .greeting-card {
-      background: white;
-      border-radius: 12px;
-      padding: 1.5rem;
+    .welcome-banner {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+      border-radius: var(--radius);
+      padding: 1.75rem 1.5rem;
       margin-top: 1.25rem;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      color: white;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
     }
-    .greeting-card h2 {
-      font-size: 1.2rem;
-      color: #1a2332;
-      margin-bottom: 0.35rem;
+    .welcome-banner::before {
+      content: '';
+      position: absolute;
+      top: -30%; right: -15%;
+      width: 180px; height: 180px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 50%;
     }
-    .current-message {
-      background: #f0f7ff;
-      border-left: 3px solid #0066cc;
-      padding: 0.75rem 1rem;
-      border-radius: 0 8px 8px 0;
-      color: #334155;
-      font-size: 0.9rem;
-      line-height: 1.5;
-      margin-top: 0.75rem;
+    .welcome-banner::after {
+      content: '';
+      position: absolute;
+      bottom: -40%; left: -10%;
+      width: 140px; height: 140px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 50%;
     }
+    .welcome-banner h2 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 0.15rem;
+      letter-spacing: -0.02em;
+      position: relative;
+      z-index: 1;
+    }
+    .welcome-subtitle {
+      font-size: 0.85rem;
+      opacity: 0.85;
+      margin-bottom: 1rem;
+      position: relative;
+      z-index: 1;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(255,255,255,0.18);
+      backdrop-filter: blur(8px);
+      padding: 0.5rem 0.9rem;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      position: relative;
+      z-index: 1;
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #6EE7B7;
+      animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-    /* ─── Phase sections ─── */
-    .phase-section {
-      background: white;
-      border-radius: 12px;
-      padding: 1.25rem 1.25rem 0.75rem;
+    /* ─── Message card ─── */
+    .message-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.25rem;
       margin-top: 0.75rem;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-light);
     }
-    .phase-header {
+    .message-card-header {
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      margin-bottom: 0.85rem;
+      margin-bottom: 0.6rem;
     }
-    .phase-number {
-      width: 26px; height: 26px;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.75rem; font-weight: 700; color: white;
-      flex-shrink: 0;
-    }
-    .phase-number.completed { background: #10b981; }
-    .phase-number.current { background: #0066cc; }
-    .phase-number.upcoming { background: #cbd5e1; }
-    .phase-title {
-      font-size: 0.95rem;
+    .message-card-header svg { width: 16px; height: 16px; color: var(--primary); flex-shrink: 0; }
+    .message-card-header span {
+      font-size: 0.78rem;
       font-weight: 600;
-      color: #334155;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
-    .phase-title.completed { color: #10b981; }
-    .phase-title.current { color: #0066cc; }
-    .phase-title.upcoming { color: #94a3b8; }
+    .message-text {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
 
-    /* ─── Stage rows inside phase ─── */
-    .stage-row {
+    /* ─── Phase Sections ─── */
+    .roadmap-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin: 1.5rem 0 0.6rem 0.25rem;
+    }
+
+    .phase-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 0;
+      margin-top: 0.6rem;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-light);
+      overflow: hidden;
+      transition: box-shadow 0.2s ease;
+    }
+    .phase-card.active { box-shadow: var(--shadow-md); border-color: var(--primary-mid); }
+
+    .phase-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+    }
+    .phase-badge {
+      width: 32px; height: 32px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem; font-weight: 700;
+      flex-shrink: 0;
+      transition: all 0.2s ease;
+    }
+    .phase-badge.completed { background: var(--success-bg); color: var(--success); }
+    .phase-badge.current { background: var(--primary); color: white; }
+    .phase-badge.upcoming { background: var(--border-light); color: var(--text-muted); }
+
+    .phase-meta { flex: 1; }
+    .phase-title {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .phase-title.completed { color: var(--success); }
+    .phase-title.current { color: var(--text-primary); }
+    .phase-title.upcoming { color: var(--text-muted); }
+
+    .phase-progress {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 0.1rem;
+    }
+
+    .phase-check { color: var(--success); flex-shrink: 0; }
+    .phase-check svg { width: 18px; height: 18px; }
+
+    /* ─── Stages ─── */
+    .stages-list {
+      padding: 0 1.25rem 0.5rem;
+    }
+
+    .stage-item {
       display: flex;
       align-items: flex-start;
-      gap: 0.75rem;
-      padding: 0.6rem 0;
+      gap: 0.85rem;
+      padding: 0.7rem 0;
       position: relative;
     }
-    .stage-row:not(:last-child) { border-bottom: 1px solid #f1f5f9; }
 
-    .stage-icon {
+    /* Vertical connector line */
+    .stage-item:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 11px;
+      top: 32px;
+      bottom: -2px;
+      width: 1.5px;
+    }
+    .stage-item.completed:not(:last-child)::after { background: var(--primary-mid); }
+    .stage-item.current:not(:last-child)::after { background: linear-gradient(to bottom, var(--primary-mid), var(--border)); }
+    .stage-item.upcoming:not(:last-child)::after { background: var(--border-light); }
+
+    .stage-dot {
       width: 22px; height: 22px;
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
       margin-top: 1px;
-      font-size: 0.7rem;
+      position: relative;
+      z-index: 2;
+      transition: all 0.2s ease;
     }
-    .stage-icon.completed { background: #d1fae5; color: #10b981; }
-    .stage-icon.current { background: #dbeafe; color: #0066cc; box-shadow: 0 0 0 3px rgba(0,102,204,0.15); }
-    .stage-icon.upcoming { background: #f1f5f9; color: #cbd5e1; }
+    .stage-dot svg { width: 12px; height: 12px; }
+    .stage-dot.completed { background: var(--success-bg); color: var(--success); }
+    .stage-dot.current {
+      background: var(--primary);
+      color: white;
+      box-shadow: 0 0 0 4px var(--current-glow), var(--shadow-sm);
+    }
+    .stage-dot.upcoming { background: var(--border-light); color: var(--text-muted); }
 
-    .stage-icon svg { width: 12px; height: 12px; }
-
-    .stage-info { flex: 1; }
-    .stage-label {
+    .stage-content { flex: 1; min-width: 0; padding-bottom: 0.15rem; }
+    .stage-name {
       font-size: 0.88rem;
       font-weight: 500;
-      line-height: 1.3;
+      line-height: 1.35;
     }
-    .stage-label.completed { color: #334155; }
-    .stage-label.current { color: #0066cc; font-weight: 600; }
-    .stage-label.upcoming { color: #94a3b8; }
+    .stage-name.completed { color: var(--text-primary); }
+    .stage-name.current { color: var(--primary); font-weight: 600; }
+    .stage-name.upcoming { color: var(--text-muted); }
 
-    .stage-desc {
+    .stage-detail {
       font-size: 0.78rem;
-      color: #64748b;
+      line-height: 1.45;
       margin-top: 0.15rem;
-      line-height: 1.4;
     }
-    .stage-desc.upcoming { color: #cbd5e1; }
+    .stage-detail.completed { color: var(--text-muted); }
+    .stage-detail.current { color: var(--text-secondary); }
+    .stage-detail.upcoming { color: var(--border); }
 
     /* ─── Footer ─── */
     .portal-footer {
       text-align: center;
-      padding: 1.5rem 1rem;
-      color: #94a3b8;
+      padding: 2rem 1rem 1rem;
+      border-top: 1px solid var(--border-light);
+      margin-top: 1rem;
+    }
+    .footer-text {
+      color: var(--text-muted);
       font-size: 0.75rem;
+      line-height: 1.6;
+    }
+    .footer-text a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
     }
 
-    /* ─── Error ─── */
-    .error { color: #dc2626; font-size: 0.85rem; margin-top: 0.75rem; display: none; }
+    /* ─── Responsive ─── */
+    @media (max-width: 380px) {
+      .welcome-banner { padding: 1.5rem 1.25rem; }
+      .welcome-banner h2 { font-size: 1.2rem; }
+      .login-card { padding: 2rem 1.25rem; }
+    }
   </style>
 </head>
 <body>
 
+  <!-- Header -->
   <div class="header">
-    <div class="logo">Medically Modern</div>
-    <div class="subtitle">Patient Onboarding Portal</div>
+    <div class="header-inner">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+      </div>
+      <div class="logo-text"><span>Medically</span> Modern</div>
+    </div>
   </div>
 
   <div class="container">
     <!-- Login View -->
     <div id="login-view">
-      <div class="card">
+      <div class="login-card">
+        <div class="login-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
         <h2>Check Your Status</h2>
-        <input type="tel" id="phone" class="phone-input" placeholder="Enter your phone number" maxlength="14">
-        <button class="btn" onclick="lookupByPhone()">Look Up</button>
+        <p>Enter the phone number associated with your account to view your onboarding progress.</p>
+        <div class="input-group">
+          <div class="input-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+          </div>
+          <input type="tel" id="phone" class="phone-input" placeholder="(555) 123-4567" maxlength="14">
+        </div>
+        <button class="btn" onclick="lookupByPhone()">View My Progress</button>
         <div class="error" id="error-msg"></div>
       </div>
     </div>
 
     <!-- Loading View -->
     <div id="loading-view">
-      <div class="spinner"></div>
-      <p style="color:#5a6978;">Loading your status...</p>
+      <div class="loading-pulse"></div>
+      <p class="loading-text">Looking up your account...</p>
     </div>
 
     <!-- Status View -->
     <div id="status-view">
-      <div class="greeting-card">
+      <div class="welcome-banner" id="welcome-banner">
         <h2 id="patient-greeting">Hi!</h2>
-        <div class="current-message" id="current-message"></div>
+        <div class="welcome-subtitle">Here's where things stand with your onboarding.</div>
+        <div class="status-pill">
+          <div class="status-dot"></div>
+          <span id="status-pill-text">In Progress</span>
+        </div>
       </div>
-      <div id="roadmap"></div>
-    </div>
-  </div>
 
-  <div class="portal-footer">
-    Questions? Call us at (800) 555-0199
+      <div class="message-card">
+        <div class="message-card-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          <span>Latest Update</span>
+        </div>
+        <div class="message-text" id="current-message"></div>
+      </div>
+
+      <div class="roadmap-label">Your Roadmap</div>
+      <div id="roadmap"></div>
+
+      <div class="portal-footer">
+        <div class="footer-text">
+          Questions about your status?<br>
+          Call us at <a href="tel:+18005550199">(800) 555-0199</a>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
     const API_BASE = 'https://patient-portal-backend-production.up.railway.app';
 
-    // All stages that send texts, in order, grouped by phase
     const PHASES = [
       {
         number: 1,
         title: "Medical Review",
         stages: [
-          { code: "0B", label: "Referral Received", desc: "We received your referral and started your case." },
-          { code: "1B", label: "Working With Your Doctor", desc: "Coordinating with your doctor for medical documentation." },
-          { code: "1D", label: "Awaiting Medical Records", desc: "Following up with your doctor's office for records." },
+          { code: "0B", label: "Referral Received", desc: "Your referral has been received and your case is underway." },
+          { code: "1B", label: "Working With Your Doctor", desc: "We're coordinating with your doctor for the documentation we need." },
+          { code: "1D", label: "Awaiting Medical Records", desc: "Following up with your doctor's office to obtain your records." },
           { code: "1E", label: "Medical Review Complete", desc: "Your medical records have been reviewed and approved." }
         ]
       },
@@ -233,51 +530,46 @@
         number: 2,
         title: "Insurance Verification",
         stages: [
-          { code: "2C", label: "Authorization Pending", desc: "Prior authorization submitted to your insurance." },
-          { code: "2D", label: "Additional Info Requested", desc: "Insurance needs more information before approving." },
-          { code: "2E", label: "Insurance Approved", desc: "Your insurance has approved your equipment." }
+          { code: "2C", label: "Authorization Pending", desc: "Prior authorization submitted to your insurance company." },
+          { code: "2D", label: "Additional Info Requested", desc: "Your insurance requested more information before approval." },
+          { code: "2E", label: "Insurance Approved", desc: "Your insurance has approved coverage for your equipment." }
         ]
       },
       {
         number: 3,
         title: "Welcome & Delivery",
         stages: [
-          { code: "3A", label: "Scheduling Your Welcome Call", desc: "Our care team will call to finalize everything." },
-          { code: "3C", label: "You're All Set!", desc: "Equipment order placed — delivery details coming soon." }
+          { code: "3A", label: "Scheduling Your Welcome Call", desc: "Our care team will reach out to finalize everything." },
+          { code: "3C", label: "You're All Set!", desc: "Your equipment order is placed — delivery details coming soon." }
         ]
       }
     ];
 
-    // Flatten all stage codes in order for index comparison
     const ALL_CODES = PHASES.flatMap(p => p.stages.map(s => s.code));
 
     function getStageIndex(code) {
       const idx = ALL_CODES.indexOf(code);
       if (idx !== -1) return idx;
-      // Non-visible stage — map by code prefix to approximate position
-      // 1A=after 0B, 1C=after 1B, 2A/2B=before 2C, 3B=before 3C
       const mapping = { '1A': 0, '1C': 2, '2A': 3, '2B': 3, '3B': 7 };
       return mapping[code] ?? 0;
     }
 
-    // SVG icons
-    const checkSVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5L6.5 11.5L12.5 5"/></svg>';
-    const dotSVG = '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="3.5"/></svg>';
-    const circleSVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>';
+    // SVG templates
+    const checkIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5L6.5 11L12.5 5.5"/></svg>';
+    const currentDot = '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="3"/></svg>';
+    const emptyCircle = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="4.5"/></svg>';
+    const phaseCheck = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
 
     async function init() {
-      const params = new URLSearchParams(window.location.search);
-      const uid = params.get('p');
-
+      const uid = new URLSearchParams(window.location.search).get('p');
       if (uid) {
         document.getElementById('login-view').style.display = 'none';
         document.getElementById('loading-view').style.display = 'block';
         try {
           const res = await fetch(`${API_BASE}/api/status/uid/${uid}`);
           if (!res.ok) throw new Error('not found');
-          const data = await res.json();
-          renderStatus(data);
-        } catch (err) {
+          renderStatus(await res.json());
+        } catch {
           document.getElementById('loading-view').style.display = 'none';
           document.getElementById('login-view').style.display = 'block';
         }
@@ -290,7 +582,7 @@
       errEl.style.display = 'none';
 
       if (phone.length < 10) {
-        errEl.textContent = 'Please enter a valid phone number.';
+        errEl.textContent = 'Please enter a valid 10-digit phone number.';
         errEl.style.display = 'block';
         return;
       }
@@ -301,12 +593,11 @@
       try {
         const res = await fetch(`${API_BASE}/api/status/${phone}`);
         if (!res.ok) throw new Error('not found');
-        const data = await res.json();
-        renderStatus(data);
-      } catch (err) {
+        renderStatus(await res.json());
+      } catch {
         document.getElementById('loading-view').style.display = 'none';
         document.getElementById('login-view').style.display = 'block';
-        errEl.textContent = 'We couldn\'t find your record. Please check your number and try again.';
+        errEl.textContent = 'We couldn\'t find an account with that number. Please double-check and try again.';
         errEl.style.display = 'block';
       }
     }
@@ -316,50 +607,77 @@
       document.getElementById('loading-view').style.display = 'none';
       document.getElementById('status-view').style.display = 'block';
 
-      // Greeting
-      document.getElementById('patient-greeting').textContent = `Hi ${data.patient.name}!`;
+      const name = data.patient.name;
+      document.getElementById('patient-greeting').textContent = `Hi ${name}!`;
 
-      // Current message
-      const msgEl = document.getElementById('current-message');
-      const currentCode = data.stage?.code || '0B';
-      const currentIdx = getStageIndex(currentCode);
+      const stageCode = data.stage?.code || '0B';
+      const currentIdx = getStageIndex(stageCode);
+      const isComplete = stageCode === '3C';
 
-      // Find the best message to show
-      let displayMessage = data.stage?.message;
-      if (!displayMessage) {
-        // Find the nearest stage description
-        const nearestCode = ALL_CODES[currentIdx];
+      // Status pill
+      const pillEl = document.getElementById('status-pill-text');
+      if (isComplete) {
+        pillEl.textContent = 'Complete';
+      } else {
+        const currentPhase = PHASES.find(p => p.stages.some(s => ALL_CODES.indexOf(s.code) >= currentIdx && ALL_CODES.indexOf(s.code) <= currentIdx + p.stages.length));
+        pillEl.textContent = 'In Progress';
+      }
+
+      // Message
+      let message = data.stage?.message;
+      if (!message) {
+        const nearestCode = ALL_CODES[Math.min(currentIdx, ALL_CODES.length - 1)];
         for (const phase of PHASES) {
           const s = phase.stages.find(st => st.code === nearestCode);
-          if (s) { displayMessage = s.desc; break; }
+          if (s) { message = s.desc; break; }
         }
       }
-      msgEl.textContent = displayMessage || 'Your case is being processed.';
+      document.getElementById('current-message').textContent = message || 'Your case is being processed.';
 
       // Build roadmap
       const roadmap = document.getElementById('roadmap');
       roadmap.innerHTML = '';
 
       PHASES.forEach(phase => {
-        const section = document.createElement('div');
-        section.className = 'phase-section';
-
-        // Determine phase status
-        const phaseStageIndices = phase.stages.map(s => ALL_CODES.indexOf(s.code));
-        const lastInPhase = Math.max(...phaseStageIndices);
-        const firstInPhase = Math.min(...phaseStageIndices);
+        const phaseIndices = phase.stages.map(s => ALL_CODES.indexOf(s.code));
+        const lastInPhase = Math.max(...phaseIndices);
+        const firstInPhase = Math.min(...phaseIndices);
 
         let phaseStatus;
         if (currentIdx > lastInPhase) phaseStatus = 'completed';
         else if (currentIdx >= firstInPhase) phaseStatus = 'current';
         else phaseStatus = 'upcoming';
 
-        section.innerHTML = `
+        const completedCount = phase.stages.filter(s => ALL_CODES.indexOf(s.code) < currentIdx).length;
+        const currentCount = phase.stages.filter(s => ALL_CODES.indexOf(s.code) === currentIdx).length;
+        const doneCount = completedCount + currentCount;
+
+        const card = document.createElement('div');
+        card.className = `phase-card${phaseStatus === 'current' ? ' active' : ''}`;
+
+        let progressText = '';
+        if (phaseStatus === 'completed') progressText = 'Complete';
+        else if (phaseStatus === 'current') progressText = `Step ${doneCount} of ${phase.stages.length}`;
+        else progressText = `${phase.stages.length} steps`;
+
+        let headerRight = '';
+        if (phaseStatus === 'completed') {
+          headerRight = `<div class="phase-check">${phaseCheck}</div>`;
+        }
+
+        card.innerHTML = `
           <div class="phase-header">
-            <div class="phase-number ${phaseStatus}">${phase.number}</div>
-            <div class="phase-title ${phaseStatus}">${phase.title}</div>
+            <div class="phase-badge ${phaseStatus}">${phaseStatus === 'completed' ? '&#10003;' : phase.number}</div>
+            <div class="phase-meta">
+              <div class="phase-title ${phaseStatus}">${phase.title}</div>
+              <div class="phase-progress">${progressText}</div>
+            </div>
+            ${headerRight}
           </div>
         `;
+
+        const stagesList = document.createElement('div');
+        stagesList.className = 'stages-list';
 
         phase.stages.forEach(stage => {
           const stageIdx = ALL_CODES.indexOf(stage.code);
@@ -368,25 +686,34 @@
           else if (stageIdx === currentIdx) status = 'current';
           else status = 'upcoming';
 
-          const row = document.createElement('div');
-          row.className = 'stage-row';
+          const icon = status === 'completed' ? checkIcon : (status === 'current' ? currentDot : emptyCircle);
 
-          const icon = status === 'completed' ? checkSVG : (status === 'current' ? dotSVG : circleSVG);
-
-          row.innerHTML = `
-            <div class="stage-icon ${status}">${icon}</div>
-            <div class="stage-info">
-              <div class="stage-label ${status}">${stage.label}</div>
-              <div class="stage-desc ${status}">${stage.desc}</div>
+          const item = document.createElement('div');
+          item.className = `stage-item ${status}`;
+          item.innerHTML = `
+            <div class="stage-dot ${status}">${icon}</div>
+            <div class="stage-content">
+              <div class="stage-name ${status}">${stage.label}</div>
+              <div class="stage-detail ${status}">${stage.desc}</div>
             </div>
           `;
-
-          section.appendChild(row);
+          stagesList.appendChild(item);
         });
 
-        roadmap.appendChild(section);
+        card.appendChild(stagesList);
+        roadmap.appendChild(card);
       });
     }
+
+    // Phone formatting
+    document.getElementById('phone').addEventListener('input', function(e) {
+      let val = this.value.replace(/\D/g, '');
+      if (val.length > 10) val = val.slice(0, 10);
+      if (val.length >= 6) this.value = `(${val.slice(0,3)}) ${val.slice(3,6)}-${val.slice(6)}`;
+      else if (val.length >= 3) this.value = `(${val.slice(0,3)}) ${val.slice(3)}`;
+      else if (val.length > 0) this.value = `(${val}`;
+      else this.value = '';
+    });
 
     document.getElementById('phone').addEventListener('keyup', e => {
       if (e.key === 'Enter') lookupByPhone();
