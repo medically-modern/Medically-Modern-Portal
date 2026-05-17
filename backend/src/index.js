@@ -1,9 +1,11 @@
 const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
-const { getItem, findPatientByPhone, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
 const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS } = require("./config");
-const { cachePatientState, getPatientState, findPatientByPhoneCache, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, redisHealthCheck } = require("./redis");
+const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
 const fs = require("fs");
@@ -20,28 +22,99 @@ try {
 }
 
 const app = express();
-app.use(cors());
+
+// ─── [#6] Security headers ───
+app.use(helmet());
+
+// ─── [#6] CORS — restrict to known origins ───
+const ALLOWED_ORIGINS = [
+  "https://medicallymodern.com",
+  "https://www.medicallymodern.com",
+  "https://patient-portal-backend-production.up.railway.app"
+];
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (server-to-server, curl, mobile)
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    cb(new Error("CORS not allowed"));
+  }
+}));
+
+// ─── [#1] Raw body capture for webhook signature verification ───
+// Must run before express.json() so we have the untouched body
+app.use("/webhooks", express.json({
+  verify: (req, _res, buf) => { req.rawBody = buf; }
+}));
 app.use(express.json());
+
+// ─── [#6] Global rate limiter — 100 req/min/IP ───
+app.use(rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" }
+}));
+
+// ─── [#4] Strict rate limiter for status endpoints — 30 req/min/IP ───
+const statusLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many status requests, please try again later" }
+});
+
+// ─── [#2] Debug endpoint auth middleware ───
+const DEBUG_API_KEY = process.env.DEBUG_API_KEY;
+function requireDebugKey(req, res, next) {
+  if (!DEBUG_API_KEY) {
+    return res.status(503).json({ error: "Debug endpoints are disabled (no DEBUG_API_KEY configured)" });
+  }
+  const auth = req.headers.authorization;
+  if (!auth || auth !== `Bearer ${DEBUG_API_KEY}`) {
+    console.log(`[security] Unauthorized debug access attempt from ${req.ip}`);
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+}
 
 const PORT = process.env.PORT || 3000;
 
 // ─── Health check ───
+// ─── [#7] Health check — no internal config details ───
 app.get("/health", async (req, res) => {
   const redis = await redisHealthCheck();
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    redis: redis.connected ? "connected" : `disconnected (${redis.reason})`,
-    monday: process.env.MONDAY_TOKEN ? "configured" : "MISSING"
+    redis: redis.connected ? "connected" : "disconnected"
   });
 });
 
-// ─── Webhook receiver from Monday.com ───
+// ─── [#1] Webhook receiver from Monday.com — with signature verification ───
 app.post("/webhooks/monday", async (req, res) => {
-  // Monday sends a challenge on first subscription
+  // Monday sends a challenge on first subscription — must respond before signature check
   if (req.body.challenge) {
     console.log("[webhook] Challenge received, responding");
     return res.json({ challenge: req.body.challenge });
+  }
+
+  // Verify webhook signature (HMAC-SHA256)
+  const WEBHOOK_SECRET = process.env.MONDAY_WEBHOOK_SECRET;
+  if (WEBHOOK_SECRET) {
+    const signature = req.headers["x-webhook-signature"] || req.headers["authorization"];
+    if (!signature || !req.rawBody) {
+      console.log(`[security] Webhook request missing signature from ${req.ip}`);
+      return res.status(401).json({ error: "Missing webhook signature" });
+    }
+    const expected = crypto.createHmac("sha256", WEBHOOK_SECRET).update(req.rawBody).digest("base64");
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      console.log(`[security] Invalid webhook signature from ${req.ip}`);
+      return res.status(401).json({ error: "Invalid webhook signature" });
+    }
+  } else {
+    console.warn("[security] WARNING: MONDAY_WEBHOOK_SECRET not set — webhook signature verification is DISABLED");
   }
 
   const event = req.body.event;
@@ -192,133 +265,32 @@ app.post("/webhooks/monday", async (req, res) => {
     res.json({ status: "received", stage: patientStage?.code || "unmapped" });
   } catch (err) {
     console.error("[webhook] Error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// ─── Patient status by phone ───
-app.get("/api/status/:phone", async (req, res) => {
-  try {
-    const phone = req.params.phone;
+// ─── [#3] Phone lookup endpoint REMOVED — was unauthenticated, allowed enumeration ───
+// The portal frontend uses UID-based lookup only. Phone lookup is no longer exposed.
 
-    // Try Redis cache first (fast path)
-    const cached = await findPatientByPhoneCache(phone);
-    if (cached) {
-      console.log(`[status] Phone cache HIT for ${phone}`);
-      const history = await getNotificationHistory(cached.item_id);
-      return res.json({
-        patient: {
-          name: cached.name.replace(/^\[TEST\]\s*/, "").split(" ")[0],
-          itemId: cached.item_id,
-          boardId: cached.board_id,
-          uid: cached.patient_uid || null
-        },
-        stage: {
-          code: cached.stage_code,
-          label: cached.stage_label,
-          phase: parseInt(cached.phase),
-          visible: cached.visible === "true",
-          message: cached.message
-        },
-        intakeDate: cached.intake_date || null,
-        notifications: { count: parseInt(cached.notification_count || 0), history },
-        lastUpdated: cached.stage_updated_at,
-        source: "cache"
-      });
-    }
-
-    // Cache miss — fall back to Monday.com API
-    console.log(`[status] Phone cache MISS for ${phone}, querying Monday.com`);
-    const boardIds = [BOARDS.WELCOME_CALL, BOARDS.INSURANCE, BOARDS.MEDICAL_EVAL];
-    const patient = await findPatientByPhone(phone, boardIds);
-
-    if (!patient) {
-      return res.status(404).json({ error: "Patient not found" });
-    }
-
-    const stageCol = patient.column_values.find(c =>
-      c.id === "color_mm1wyr92" || c.id === "color_mm1ws96t"
-    );
-
-    let currentStage = null;
-    if (stageCol?.value) {
-      try {
-        const parsed = JSON.parse(stageCol.value);
-        const stageKey = `${patient.boardId}:${parsed.index}`;
-        currentStage = STAGE_MAP[stageKey];
-      } catch (e) {
-        console.log("Could not parse stage column:", stageCol.value);
-      }
-    }
-
-    if (!currentStage && String(patient.boardId) === BOARDS.MEDICAL_EVAL) {
-      currentStage = REFERRAL_RECEIVED;
-    }
-
-    const intakeCol = patient.column_values.find(c => c.id === "date_mm1wf43j");
-    const phoneCol = patient.column_values.find(c => c.id === "phone_mm1x44yk");
-    const uidCol = patient.column_values.find(c => Object.values(PATIENT_UID_COLUMNS).includes(c.id));
-
-    // Hydrate Redis cache
-    if (currentStage) {
-      await cachePatientState(patient.id, {
-        phone: phoneCol?.text || phone,
-        name: patient.name,
-        currentStage: currentStage.id,
-        stageCode: currentStage.code,
-        stageLabel: currentStage.label,
-        boardId: patient.boardId,
-        phase: currentStage.phase,
-        visible: currentStage.visible,
-        message: MESSAGES[currentStage.id] || "",
-        intakeDate: intakeCol?.text || "",
-        patientUid: uidCol?.text || ""
-      });
-      if (phoneCol?.text) await indexPhone(phoneCol.text, patient.id);
-      if (uidCol?.text) await indexUid(uidCol.text, patient.id);
-    }
-
-    res.json({
-      patient: {
-        name: patient.name.replace(/^\[TEST\]\s*/, "").split(" ")[0],
-        itemId: patient.id,
-        boardId: patient.boardId,
-        group: patient.group?.title,
-        uid: uidCol?.text || null
-      },
-      stage: currentStage ? {
-        code: currentStage.code,
-        label: currentStage.label,
-        phase: currentStage.phase,
-        visible: currentStage.visible,
-        message: MESSAGES[currentStage.id]
-      } : null,
-      intakeDate: intakeCol?.text || null,
-      lastUpdated: new Date().toISOString(),
-      source: "monday_api"
-    });
-  } catch (err) {
-    console.error("[status/phone] Error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── Patient status by UID (portal link: ?p={patient_uid}) ───
-app.get("/api/status/uid/:uid", async (req, res) => {
+// ─── [#4, #7] Patient status by UID (portal link: ?p={patient_uid}) ───
+// Rate limited + response minimized to only what the frontend needs
+app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
   try {
     const uid = req.params.uid;
+
+    // [#4] Validate UUID format before touching Redis or Monday
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(uid)) {
+      return res.status(400).json({ error: "Invalid patient identifier" });
+    }
 
     // Try Redis cache first
     const cached = await findPatientByUidCache(uid);
     if (cached) {
       console.log(`[status] UID cache HIT for ${uid}`);
-      const history = await getNotificationHistory(cached.item_id);
       return res.json({
         patient: {
-          name: cached.name.replace(/^\[TEST\]\s*/, "").split(" ")[0],
-          itemId: cached.item_id,
-          boardId: cached.board_id,
-          uid
+          name: cached.name.replace(/^\[TEST\]\s*/, "").split(" ")[0]
         },
         stage: {
           code: cached.stage_code,
@@ -328,9 +300,7 @@ app.get("/api/status/uid/:uid", async (req, res) => {
           message: cached.message
         },
         intakeDate: cached.intake_date || null,
-        notifications: { count: parseInt(cached.notification_count || 0), history },
-        lastUpdated: cached.stage_updated_at,
-        source: "cache"
+        lastUpdated: cached.stage_updated_at
       });
     }
 
@@ -383,13 +353,10 @@ app.get("/api/status/uid/:uid", async (req, res) => {
       await indexUid(uid, patient.id);
     }
 
+    // [#7] Only return what the frontend needs — no itemId, boardId, group, source
     res.json({
       patient: {
-        name: patient.name.replace(/^\[TEST\]\s*/, "").split(" ")[0],
-        itemId: patient.id,
-        boardId: patient.boardId,
-        group: patient.group?.title,
-        uid
+        name: patient.name.replace(/^\[TEST\]\s*/, "").split(" ")[0]
       },
       stage: currentStage ? {
         code: currentStage.code,
@@ -399,20 +366,24 @@ app.get("/api/status/uid/:uid", async (req, res) => {
         message: MESSAGES[currentStage.id]
       } : null,
       intakeDate: intakeCol?.text || null,
-      lastUpdated: new Date().toISOString(),
-      source: "monday_api"
+      lastUpdated: new Date().toISOString()
     });
   } catch (err) {
     console.error("[status/uid] Error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// ─── Debug endpoints ───
-app.get("/api/debug/board/:boardId", async (req, res) => {
+// ─── [#2] Debug endpoints — protected by API key ───
+app.get("/api/debug/board/:boardId", requireDebugKey, async (req, res) => {
   try {
+    // [#5] Validate board ID is numeric only
+    const boardId = req.params.boardId;
+    if (!/^\d+$/.test(boardId)) {
+      return res.status(400).json({ error: "Invalid board ID" });
+    }
     const data = await mondayQuery(`{
-      boards(ids: [${req.params.boardId}]) {
+      boards(ids: [${boardId}]) {
         name
         items_page(limit: 25) {
           items {
@@ -430,10 +401,15 @@ app.get("/api/debug/board/:boardId", async (req, res) => {
   }
 });
 
-app.get("/api/debug/cache/:itemId", async (req, res) => {
+app.get("/api/debug/cache/:itemId", requireDebugKey, async (req, res) => {
   try {
-    const state = await getPatientState(req.params.itemId);
-    const history = await getNotificationHistory(req.params.itemId);
+    // [#5] Validate item ID is numeric only
+    const itemId = req.params.itemId;
+    if (!/^\d+$/.test(itemId)) {
+      return res.status(400).json({ error: "Invalid item ID" });
+    }
+    const state = await getPatientState(itemId);
+    const history = await getNotificationHistory(itemId);
     res.json({ cached: state, notifications: history });
   } catch (err) {
     res.status(500).json({ error: err.message });
