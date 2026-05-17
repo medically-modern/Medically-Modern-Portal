@@ -100,21 +100,17 @@ app.post("/webhooks/monday", async (req, res) => {
     return res.json({ challenge: req.body.challenge });
   }
 
-  // Verify webhook signature (HMAC-SHA256)
-  const WEBHOOK_SECRET = process.env.MONDAY_WEBHOOK_SECRET;
-  if (WEBHOOK_SECRET) {
-    const signature = req.headers["x-webhook-signature"] || req.headers["authorization"];
-    if (!signature || !req.rawBody) {
-      console.log(`[security] Webhook request missing signature from ${req.ip}`);
-      return res.status(401).json({ error: "Missing webhook signature" });
-    }
-    const expected = crypto.createHmac("sha256", WEBHOOK_SECRET).update(req.rawBody).digest("base64");
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      console.log(`[security] Invalid webhook signature from ${req.ip}`);
-      return res.status(401).json({ error: "Invalid webhook signature" });
+  // Verify webhook authenticity — Monday sends our API token in the Authorization header
+  // for webhooks created via the API. We compare it to MONDAY_TOKEN (already on Railway).
+  const mondayToken = process.env.MONDAY_TOKEN;
+  const authHeader = req.headers["authorization"];
+  if (mondayToken) {
+    if (!authHeader || authHeader !== mondayToken) {
+      console.log(`[security] Unauthorized webhook request from ${req.ip} — token mismatch`);
+      return res.status(401).json({ error: "Unauthorized" });
     }
   } else {
-    console.warn("[security] WARNING: MONDAY_WEBHOOK_SECRET not set — webhook signature verification is DISABLED");
+    console.warn("[security] WARNING: MONDAY_TOKEN not set — webhook verification is DISABLED");
   }
 
   const event = req.body.event;
