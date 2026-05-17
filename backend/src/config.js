@@ -68,7 +68,7 @@ const MESSAGES = {
   auth_denied: "Your insurance has requested additional information before approving your equipment. Our team is working on next steps and will be in touch.",
   insurance_complete: "Your insurance has approved your equipment. We're almost there!",
   welcome_call: "",
-  completed: "You're all set! Your equipment order has been placed. You'll receive delivery details shortly. Welcome to Medically Modern!"
+  completed: "You're all set! Your equipment order is queued. Welcome to Medically Modern!"
 };
 
 // Groups that indicate "Completed" on Welcome Call board
