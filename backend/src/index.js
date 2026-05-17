@@ -99,7 +99,9 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
     console.error("[security] MONDAY_WEBHOOK_SECRET not configured — rejecting all webhooks");
     return res.status(503).json({ error: "Webhook endpoint not configured" });
   }
-  if (!crypto.timingSafeEqual(Buffer.from(req.params.secret), Buffer.from(expectedSecret))) {
+  const provided = Buffer.from(req.params.secret);
+  const expected = Buffer.from(expectedSecret);
+  if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
     console.log(`[security] Webhook request with invalid secret from ${req.ip}`);
     return res.status(401).json({ error: "Unauthorized" });
   }
