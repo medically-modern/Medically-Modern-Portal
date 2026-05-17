@@ -118,7 +118,7 @@
       line-height: 1.5;
     }
     .input-group { position: relative; }
-    .phone-input {
+    .text-input, .phone-input {
       width: 100%;
       padding: 0.85rem 1rem 0.85rem 2.75rem;
       border: 1.5px solid var(--border);
@@ -503,7 +503,7 @@
   </div>
 
   <div class="container">
-    <!-- Login View -->
+    <!-- No-Link View (shown when no ?p= UID in URL) -->
     <div id="login-view">
       <div class="login-card">
         <div class="login-icon">
@@ -515,16 +515,9 @@
           </svg>
         </div>
         <h2>Check Your Status</h2>
-        <p>Enter the phone number associated with your account to view your onboarding progress.</p>
-        <div class="input-group">
-          <div class="input-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-            </svg>
-          </div>
-          <input type="tel" id="phone" class="phone-input" placeholder="(555) 123-4567" maxlength="14">
-        </div>
-        <button class="btn" onclick="lookupByPhone()">View My Progress</button>
+        <p>To view your onboarding progress, use the personalized link we sent to your phone via text message.</p>
+        <p style="margin-top: 0.75rem; font-size: 0.9rem; color: var(--text-secondary);">Can't find your link? Give us a call and we'll resend it.</p>
+        <a href="tel:+13475037148" class="btn" style="display: block; text-align: center; text-decoration: none; margin-top: 1rem;">Call (347) 503-7148</a>
         <div class="error" id="error-msg"></div>
       </div>
     </div>
@@ -634,31 +627,7 @@
       }
     }
 
-    async function lookupByPhone() {
-      const phone = document.getElementById('phone').value.replace(/\D/g, '');
-      const errEl = document.getElementById('error-msg');
-      errEl.style.display = 'none';
-
-      if (phone.length < 10) {
-        errEl.textContent = 'Please enter a valid 10-digit phone number.';
-        errEl.style.display = 'block';
-        return;
-      }
-
-      document.getElementById('login-view').style.display = 'none';
-      document.getElementById('loading-view').style.display = 'block';
-
-      try {
-        const res = await fetch(`${API_BASE}/api/status/${phone}`);
-        if (!res.ok) throw new Error('not found');
-        renderStatus(await res.json());
-      } catch {
-        document.getElementById('loading-view').style.display = 'none';
-        document.getElementById('login-view').style.display = 'block';
-        errEl.textContent = 'We couldn\'t find an account with that number. Please double-check and try again.';
-        errEl.style.display = 'block';
-      }
-    }
+    // Phone lookup removed — portal is UID-only via SMS links
 
     function renderStatus(data) {
       document.getElementById('login-view').style.display = 'none';
@@ -768,19 +737,6 @@
     }
 
     // Phone formatting
-    document.getElementById('phone').addEventListener('input', function(e) {
-      let val = this.value.replace(/\D/g, '');
-      if (val.length > 10) val = val.slice(0, 10);
-      if (val.length >= 6) this.value = `(${val.slice(0,3)}) ${val.slice(3,6)}-${val.slice(6)}`;
-      else if (val.length >= 3) this.value = `(${val.slice(0,3)}) ${val.slice(3)}`;
-      else if (val.length > 0) this.value = `(${val}`;
-      else this.value = '';
-    });
-
-    document.getElementById('phone').addEventListener('keyup', e => {
-      if (e.key === 'Enter') lookupByPhone();
-    });
-
     init();
   </script>
 </body>

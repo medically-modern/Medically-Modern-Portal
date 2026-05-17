@@ -24,7 +24,17 @@ try {
 const app = express();
 
 // ─── [#6] Security headers ───
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "'unsafe-inline'"],
+      "style-src": ["'self'", "https:", "'unsafe-inline'"],
+      "font-src": ["'self'", "https:", "data:"],
+      "img-src": ["'self'", "data:", "https:"],
+    }
+  }
+}));
 
 // ─── [#6] CORS — restrict to known origins ───
 const ALLOWED_ORIGINS = [
