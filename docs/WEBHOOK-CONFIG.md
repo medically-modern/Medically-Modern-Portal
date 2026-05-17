@@ -4,68 +4,98 @@
 
 ## Webhook URL
 
-All portal webhooks point to:
+All portal webhooks point to a secret URL:
 ```
-https://patient-portal-backend-production.up.railway.app/webhooks/monday
+https://patient-portal-backend-production.up.railway.app/webhooks/monday/{MONDAY_WEBHOOK_SECRET}
 ```
+
+The `MONDAY_WEBHOOK_SECRET` is a 64-character hex string stored as an environment variable on Railway. It is embedded in the URL path and verified server-side with `crypto.timingSafeEqual`. An attacker cannot send crafted payloads without knowing the full URL.
 
 ## Authentication
 
-Monday.com sends the API token (same value as `MONDAY_TOKEN` env var) in the `Authorization` header of every webhook request. The backend verifies this header matches `MONDAY_TOKEN` — no separate signing secret is needed.
+The webhook URL itself is the secret. Monday.com stores the full URL (including the secret segment) when the webhook is created. The backend verifies the `:secret` path parameter matches the `MONDAY_WEBHOOK_SECRET` env var before processing any payload — including challenge responses.
 
-## Portal Webhooks (used by the backend)
+## Active Webhooks
 
-| Board | Board ID | Webhook ID | Event | Purpose |
-|---|---|---|---|---|
-| Medical Evaluation | 18406060017 | 580027645 | `create_item` | Triggers 0B (Referral Received) + UID assignment |
-| Medical Evaluation | 18406060017 | 580027653 | `change_column_value` | Stage changes (1A–1E) |
-| Insurance | 18410601299 | 580027830 | `change_column_value` | Stage changes (2A–2E) |
-| Welcome Call | 18410804557 | 580027846 | `create_item` | Detects new items on Welcome Call board |
-| Welcome Call | 18410804557 | 580027855 | `change_column_value` | Stage changes (3A–3B) |
-| Welcome Call | 18410804557 | 581300418 | `item_moved_to_any_group` | Triggers 3C (You're All Set!) when moved to Completed group |
+| Board | Board ID | Webhook ID | Event | Config | Purpose |
+|---|---|---|---|---|---|
+| Medical Evaluation | 18406060017 | 581302884 | `create_item` | — | Triggers 0B (Referral Received) + UID assignment |
+| Medical Evaluation | 18406060017 | 581302887 | `change_specific_column_value` | `color_mm1wyr92` | Stage advancer changes (1A–1E) |
+| Insurance | 18410601299 | 581302889 | `change_specific_column_value` | `color_mm1ws96t` | Stage advancer changes (2A–2E) |
+| Welcome Call | 18410804557 | 581302890 | `create_item` | — | Detects new items on Welcome Call board |
+| Welcome Call | 18410804557 | 581302892 | `change_specific_column_value` | `color_mm1ws96t` | Stage advancer changes (3A–3B) |
 
-## Other Webhooks (not used by the portal backend)
+### Stage Advancer Columns
 
-Each board also has `change_specific_column_value` webhooks for various columns (text, phone, email, dropdown, location, color). These appear to be from Monday automations or other integrations — the portal backend ignores them since they don't match the stage advancer column.
+- **Medical Evaluation**: `color_mm1wyr92`
+- **Insurance**: `color_mm1ws96t`
+- **Welcome Call**: `color_mm1ws96t`
 
-Many of these are duplicated (same column ID, two webhook IDs). This is likely from duplicate Monday automation setups and could be cleaned up.
+These are the ONLY columns that trigger webhooks. All other column changes are ignored.
 
-## Bug Fix: Missing move_item_to_group Webhook
+## Design Decisions
 
-The `item_moved_to_any_group` webhook (ID 581300418) was **added on 2026-05-17** because it was missing. Without it, moving a Welcome Call item to the "Completed" group (group_mm1x5s5d) did NOT trigger the 3C "You're All Set!" notification. This webhook must stay active for the final stage to work.
+1. **`change_specific_column_value` instead of `change_column_value`**: The broad `change_column_value` event fires on ANY column change (text, phone, email, dropdown, etc.), causing unnecessary webhook traffic. Using `change_specific_column_value` with the stage advancer column ID means we only fire when the stage actually changes.
+
+2. **No `item_moved_to_any_group` webhook**: The "You're All Set!" (3C) notification was intentionally removed from the pipeline. Moving a Welcome Call item to the Completed group does NOT trigger any notification.
+
+3. **URL-based secret**: Monday.com doesn't support HMAC webhook signing. Instead of relying on the Authorization header (which just echoes back the API token), we embed an unguessable 64-char hex secret in the URL path.
 
 ## Recreating Webhooks
 
-If you need to recreate the portal webhooks (e.g., after changing the Railway URL):
+If you need to recreate the portal webhooks (e.g., after changing the Railway URL or rotating the secret):
 
 ```bash
-MONDAY_TOKEN="your_token"
-URL="https://your-new-url/webhooks/monday"
+MONDAY_TOKEN="your_monday_api_token"
+SECRET="your_64_char_hex_secret"
+URL="https://your-railway-url/webhooks/monday/$SECRET"
 
-# Medical Evaluation
-curl -X POST https://api.monday.com/v2 \
+# Medical Evaluation — create_item
+curl -s -X POST https://api.monday.com/v2 \
   -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"query": "mutation { create_webhook(board_id: 18406060017, url: \"'$URL'\", event: create_item) { id } }"}'
+  -d '{"query": "mutation { create_webhook(board_id: 18406060017, url: \"'"$URL"'\", event: create_item) { id } }"}'
 
-curl -X POST https://api.monday.com/v2 \
+# Medical Evaluation — stage advancer (color_mm1wyr92)
+curl -s -X POST https://api.monday.com/v2 \
   -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"query": "mutation { create_webhook(board_id: 18406060017, url: \"'$URL'\", event: change_column_value) { id } }"}'
+  -d '{"query": "mutation { create_webhook(board_id: 18406060017, url: \"'"$URL"'\", event: change_specific_column_value, config: \"{\\\"columnId\\\":\\\"color_mm1wyr92\\\"}\") { id } }"}'
 
-# Insurance
-curl -X POST https://api.monday.com/v2 \
+# Insurance — stage advancer (color_mm1ws96t)
+curl -s -X POST https://api.monday.com/v2 \
   -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"query": "mutation { create_webhook(board_id: 18410601299, url: \"'$URL'\", event: change_column_value) { id } }"}'
+  -d '{"query": "mutation { create_webhook(board_id: 18410601299, url: \"'"$URL"'\", event: change_specific_column_value, config: \"{\\\"columnId\\\":\\\"color_mm1ws96t\\\"}\") { id } }"}'
 
-# Welcome Call
-curl -X POST https://api.monday.com/v2 \
+# Welcome Call — create_item
+curl -s -X POST https://api.monday.com/v2 \
   -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"query": "mutation { create_webhook(board_id: 18410804557, url: \"'$URL'\", event: create_item) { id } }"}'
+  -d '{"query": "mutation { create_webhook(board_id: 18410804557, url: \"'"$URL"'\", event: create_item) { id } }"}'
 
-curl -X POST https://api.monday.com/v2 \
+# Welcome Call — stage advancer (color_mm1ws96t)
+curl -s -X POST https://api.monday.com/v2 \
   -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"query": "mutation { create_webhook(board_id: 18410804557, url: \"'$URL'\", event: change_column_value) { id } }"}'
+  -d '{"query": "mutation { create_webhook(board_id: 18410804557, url: \"'"$URL"'\", event: change_specific_column_value, config: \"{\\\"columnId\\\":\\\"color_mm1ws96t\\\"}\") { id } }"}'
+```
 
-curl -X POST https://api.monday.com/v2 \
+**Important**: The new code must be deployed and the `MONDAY_WEBHOOK_SECRET` env var must be set on Railway BEFORE creating webhooks. Monday sends a challenge request to verify the URL is live.
+
+## Deleting Webhooks
+
+```bash
+MONDAY_TOKEN="your_monday_api_token"
+WEBHOOK_ID="the_webhook_id"
+
+curl -s -X POST https://api.monday.com/v2 \
   -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"query": "mutation { create_webhook(board_id: 18410804557, url: \"'$URL'\", event: item_moved_to_any_group) { id } }"}'
+  -d '{"query": "mutation { delete_webhook(id: '"$WEBHOOK_ID"') { id } }"}'
+```
+
+## Listing Webhooks
+
+```bash
+MONDAY_TOKEN="your_monday_api_token"
+BOARD_ID="the_board_id"
+
+curl -s -X POST https://api.monday.com/v2 \
+  -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
+  -d '{"query": "{ webhooks(board_id: '"$BOARD_ID"') { id event config } }"}'
 ```
