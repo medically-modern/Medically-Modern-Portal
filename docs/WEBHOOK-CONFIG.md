@@ -21,6 +21,7 @@ The webhook URL itself is the secret. Monday.com stores the full URL (including 
 |---|---|---|---|---|---|
 | Medical Evaluation | 18406060017 | 581302884 | `create_item` | — | Triggers 0B (Referral Received) + UID assignment |
 | Medical Evaluation | 18406060017 | 581302887 | `change_specific_column_value` | `color_mm1wyr92` | Stage advancer changes (1A–1E) |
+| Insurance | 18410601299 | 581303108 | `create_item` | — | Detects new items created by Med Eval → Insurance automation |
 | Insurance | 18410601299 | 581302889 | `change_specific_column_value` | `color_mm1ws96t` | Stage advancer changes (2A–2E) |
 | Welcome Call | 18410804557 | 581302890 | `create_item` | — | Detects new items on Welcome Call board |
 | Welcome Call | 18410804557 | 581302892 | `change_specific_column_value` | `color_mm1ws96t` | Stage advancer changes (3A–3B) |
@@ -59,6 +60,11 @@ curl -s -X POST https://api.monday.com/v2 \
 curl -s -X POST https://api.monday.com/v2 \
   -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
   -d '{"query": "mutation { create_webhook(board_id: 18406060017, url: \"'"$URL"'\", event: change_specific_column_value, config: \"{\\\"columnId\\\":\\\"color_mm1wyr92\\\"}\") { id } }"}'
+
+# Insurance — create_item
+curl -s -X POST https://api.monday.com/v2 \
+  -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
+  -d '{"query": "mutation { create_webhook(board_id: 18410601299, url: \"'"$URL"'\", event: create_item) { id } }"}'
 
 # Insurance — stage advancer (color_mm1ws96t)
 curl -s -X POST https://api.monday.com/v2 \
