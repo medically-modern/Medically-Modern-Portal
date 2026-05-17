@@ -40,11 +40,6 @@ app.use(cors({
   }
 }));
 
-// ─── [#1] Raw body capture for webhook signature verification ───
-// Must run before express.json() so we have the untouched body
-app.use("/webhooks", express.json({
-  verify: (req, _res, buf) => { req.rawBody = buf; }
-}));
 app.use(express.json());
 
 // ─── [#6] Global rate limiter — 100 req/min/IP ───
@@ -92,25 +87,27 @@ app.get("/health", async (req, res) => {
   });
 });
 
-// ─── [#1] Webhook receiver from Monday.com — with signature verification ───
-app.post("/webhooks/monday", async (req, res) => {
-  // Monday sends a challenge on first subscription — must respond before signature check
+// ─── [#1] Webhook receiver from Monday.com — URL-based secret verification ───
+// The webhook URL is: /webhooks/monday/{MONDAY_WEBHOOK_SECRET}
+// Monday.com stores the full URL when the webhook is created. An attacker would
+// need to know the 64-char hex secret embedded in the URL to send crafted payloads.
+// The secret is stored as MONDAY_WEBHOOK_SECRET on Railway and never exposed client-side.
+app.post("/webhooks/monday/:secret", async (req, res) => {
+  // Verify the URL secret before doing anything (including challenge response)
+  const expectedSecret = process.env.MONDAY_WEBHOOK_SECRET;
+  if (!expectedSecret) {
+    console.error("[security] MONDAY_WEBHOOK_SECRET not configured — rejecting all webhooks");
+    return res.status(503).json({ error: "Webhook endpoint not configured" });
+  }
+  if (!crypto.timingSafeEqual(Buffer.from(req.params.secret), Buffer.from(expectedSecret))) {
+    console.log(`[security] Webhook request with invalid secret from ${req.ip}`);
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  // Monday sends a challenge on first subscription
   if (req.body.challenge) {
     console.log("[webhook] Challenge received, responding");
     return res.json({ challenge: req.body.challenge });
-  }
-
-  // Verify webhook authenticity — Monday sends our API token in the Authorization header
-  // for webhooks created via the API. We compare it to MONDAY_TOKEN (already on Railway).
-  const mondayToken = process.env.MONDAY_TOKEN;
-  const authHeader = req.headers["authorization"];
-  if (mondayToken) {
-    if (!authHeader || authHeader !== mondayToken) {
-      console.log(`[security] Unauthorized webhook request from ${req.ip} — token mismatch`);
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-  } else {
-    console.warn("[security] WARNING: MONDAY_TOKEN not set — webhook verification is DISABLED");
   }
 
   const event = req.body.event;
