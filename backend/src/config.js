@@ -57,6 +57,7 @@ const STAGE_MAP = {
 
 // Item creation on Medical Eval board = Referral Received (0B)
 const REFERRAL_RECEIVED = { id: "referral_received", phase: 0, label: "Referral Received", visible: true, tier: 1, code: "0B" };
+const SUBSCRIBER_WELCOME = { id: "subscriber_welcome", phase: 4, label: "Welcome to Your Portal", visible: true, tier: 1, code: "4A" };
 
 // Notification messages
 const MESSAGES = {
@@ -68,7 +69,8 @@ const MESSAGES = {
   auth_denied: "Your insurance has requested additional information before approving your equipment. Our team is working on next steps and will be in touch.",
   insurance_complete: "Your insurance has approved your equipment. We're almost there!",
   welcome_call: "",
-  completed: "You're all set! Your equipment order is queued. Welcome to Medically Modern!"
+  completed: "You're all set! Your equipment order is queued. Welcome to Medically Modern!",
+  subscriber_welcome: "Welcome to your Medically Modern patient portal! You can now log in to manage your account, update your information, and track the status of your orders.\n\nBookmark this link for easy access:\nhttps://medically-modern.github.io/mm-subscriber-portal/\n\nIf you have any questions, our team is here to help."
 };
 
 // Groups that indicate "Completed" on Welcome Call board
@@ -78,5 +80,5 @@ const COMPLETED_GROUPS = {
 
 module.exports = {
   BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, PHONE_COLUMN, PHONE_COLUMN_SUBSCRIPTION, NAME_COLUMN, INTAKE_DATE_COLUMN,
-  PATIENT_UID_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, MESSAGES, COMPLETED_GROUPS
+  PATIENT_UID_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS
 };

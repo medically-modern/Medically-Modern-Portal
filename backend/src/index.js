@@ -4,7 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
-const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS } = require("./config");
+const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, PHONE_COLUMN_SUBSCRIPTION } = require("./config");
 const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
@@ -149,6 +149,46 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
         console.error(`[webhook] Failed to write patient UID to Monday: ${uidErr.message}`);
         // Continue processing — UID write failure shouldn't block the webhook
       }
+    } else if (type === "create_item" && String(boardId) === BOARDS.SUBSCRIPTION) {
+      patientStage = SUBSCRIBER_WELCOME;
+
+      // Subscription board uses a different phone column
+      const subItem = await getItem(itemId);
+      const subPhoneCol = subItem?.column_values?.find(c => c.id === PHONE_COLUMN_SUBSCRIPTION);
+      const subPhone = subPhoneCol?.text || "";
+      const subName = subItem?.name || "";
+      const subUidCol = subItem?.column_values?.find(c => c.id === PATIENT_UID_COLUMNS[BOARDS.SUBSCRIPTION]);
+      let subUid = subUidCol?.text || "";
+
+      // Assign UID if not already set
+      if (!subUid) {
+        subUid = crypto.randomUUID();
+        const uidColumnId = PATIENT_UID_COLUMNS[BOARDS.SUBSCRIPTION];
+        try {
+          await updateColumn(BOARDS.SUBSCRIPTION, itemId, uidColumnId, subUid);
+          console.log(`[webhook] New subscriber item ${itemId} → Welcome | UID: ${subUid}`);
+        } catch (uidErr) {
+          console.error(`[webhook] Failed to write subscriber UID to Monday: ${uidErr.message}`);
+          subUid = "";
+        }
+      }
+
+      // Send the welcome SMS
+      const welcomeMsg = MESSAGES[SUBSCRIBER_WELCOME.id];
+      if (welcomeMsg && subPhone) {
+        const smsResult = await sendSMS(subPhone, welcomeMsg, { patientName: subName });
+        await logNotification(itemId, "4A", welcomeMsg);
+        console.log(`[webhook] Subscriber welcome SMS: ${smsResult.sent ? "SENT" : smsResult.reason} → ${subName} (${subPhone})`);
+      } else {
+        console.log(`[webhook] Subscriber welcome SMS skipped — phone: "${subPhone}", msg: ${!!welcomeMsg}`);
+      }
+
+      // Cache and index
+      if (subPhone) await indexPhone(subPhone, itemId);
+      if (subUid) await indexUid(subUid, itemId);
+
+      return res.json({ status: "received", stage: "4A" });
+
     } else if (type === "update_column_value") {
       // Only process stage advancer column changes
       const columnId = event.columnId;
