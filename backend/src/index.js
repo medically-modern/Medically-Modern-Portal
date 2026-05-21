@@ -136,7 +136,7 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
     // Determine the patient-facing stage
     let patientStage = null;
 
-    if (type === "create_item" && String(boardId) === BOARDS.MEDICAL_EVAL) {
+    if ((type === "create_item" || type === "create_pulse") && String(boardId) === BOARDS.MEDICAL_EVAL) {
       patientStage = REFERRAL_RECEIVED;
 
       // Generate and assign a persistent patient UID
@@ -149,7 +149,7 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
         console.error(`[webhook] Failed to write patient UID to Monday: ${uidErr.message}`);
         // Continue processing — UID write failure shouldn't block the webhook
       }
-    } else if (type === "create_item" && String(boardId) === BOARDS.SUBSCRIPTION) {
+    } else if ((type === "create_item" || type === "create_pulse") && String(boardId) === BOARDS.SUBSCRIPTION) {
       patientStage = SUBSCRIBER_WELCOME;
 
       // Subscription board uses a different phone column
