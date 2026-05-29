@@ -9,9 +9,10 @@ const RC_FROM_NUMBER = process.env.RC_FROM_NUMBER;
 
 // Lazy-init RingCentral client
 let rcPlatform = null;
+let rcSdk = null;
 
-async function getRCPlatform() {
-  if (rcPlatform) return rcPlatform;
+async function getRCPlatform(forceRefresh = false) {
+  if (rcPlatform && !forceRefresh) return rcPlatform;
 
   const clientId = process.env.RC_CLIENT_ID;
   const clientSecret = process.env.RC_CLIENT_SECRET;
@@ -23,13 +24,16 @@ async function getRCPlatform() {
     return null;
   }
 
-  const sdk = new SDK({
-    server: serverUrl,
-    clientId,
-    clientSecret
-  });
+  // Reuse SDK instance but get fresh platform auth
+  if (!rcSdk) {
+    rcSdk = new SDK({
+      server: serverUrl,
+      clientId,
+      clientSecret
+    });
+  }
 
-  rcPlatform = sdk.platform();
+  rcPlatform = rcSdk.platform();
   await rcPlatform.login({ jwt });
   console.log("[sms] RingCentral authenticated");
   return rcPlatform;
@@ -59,25 +63,39 @@ async function sendSMS(phone, message, { patientName = "" } = {}) {
   if (toNumber.length === 10) toNumber = "1" + toNumber;
   toNumber = "+" + toNumber;
 
-  try {
-    const platform = await getRCPlatform();
-    if (!platform) {
-      console.log(`[sms] SKIPPED (RC not configured) → ${toNumber}: "${message.substring(0, 80)}..."`);
-      return { sent: false, reason: "ringcentral_not_configured" };
+  // Try sending, with one retry on auth failure
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const platform = await getRCPlatform(attempt > 0);
+      if (!platform) {
+        console.log(`[sms] SKIPPED (RC not configured) → ${toNumber}: "${message.substring(0, 80)}..."`);
+        return { sent: false, reason: "ringcentral_not_configured" };
+      }
+
+      const resp = await platform.post("/restapi/v1.0/account/~/extension/~/sms", {
+        from: { phoneNumber: RC_FROM_NUMBER },
+        to: [{ phoneNumber: toNumber }],
+        text: message
+      });
+
+      const data = await resp.json();
+      console.log(`[sms] SENT → ${toNumber} (${patientName}): "${message.substring(0, 60)}..." | ID: ${data.id}`);
+      return { sent: true, messageId: data.id };
+    } catch (err) {
+      const isAuthError = err.message?.includes("Refresh token") ||
+                          err.message?.includes("token") ||
+                          err.message?.includes("Unauthorized") ||
+                          err.message?.includes("401");
+
+      if (isAuthError && attempt === 0) {
+        console.log(`[sms] Auth error, re-authenticating: ${err.message}`);
+        rcPlatform = null; // Force fresh login on next attempt
+        continue;
+      }
+
+      console.error(`[sms] FAILED → ${toNumber}: ${err.message}`);
+      return { sent: false, reason: err.message };
     }
-
-    const resp = await platform.post("/restapi/v1.0/account/~/extension/~/sms", {
-      from: { phoneNumber: RC_FROM_NUMBER },
-      to: [{ phoneNumber: toNumber }],
-      text: message
-    });
-
-    const data = await resp.json();
-    console.log(`[sms] SENT → ${toNumber} (${patientName}): "${message.substring(0, 60)}..." | ID: ${data.id}`);
-    return { sent: true, messageId: data.id };
-  } catch (err) {
-    console.error(`[sms] FAILED → ${toNumber}: ${err.message}`);
-    return { sent: false, reason: err.message };
   }
 }
 
