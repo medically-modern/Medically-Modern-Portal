@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Patient Intake Texting — Stage Reference</title>
+<style>
+  @page { size: Letter; margin: 0.55in 0.6in 0.7in 0.6in; }
+
+  :root{
+    --primary:#0B6E4F; --primary-dark:#064A35; --primary-light:#E8F5F0;
+    --accent:#2196A4; --accent-light:#E3F6F8;
+    --ink:#1B2B3A; --ink-2:#4A6274; --ink-3:#8A9DAD;
+    --line:#E4EBF0; --line-soft:#F0F4F3;
+    --send:#0B6E4F; --send-bg:#E8F5F0;
+    --silent:#8A9DAD; --silent-bg:#F4F7F9;
+    --warn:#B45309; --warn-bg:#FEF6E7;
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    color:var(--ink); font-size:9.6pt; line-height:1.45;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+
+  /* ── Cover ── */
+  .cover{
+    background:linear-gradient(135deg,var(--primary),var(--accent));
+    color:#fff; padding:26px 28px; border-radius:14px; margin-bottom:20px;
+  }
+  .cover .eyebrow{
+    font-size:8pt; letter-spacing:.16em; text-transform:uppercase;
+    opacity:.82; font-weight:700; margin-bottom:7px;
+  }
+  .cover h1{font-size:21pt; letter-spacing:-.02em; line-height:1.15; font-weight:800;}
+  .cover .sub{margin-top:8px; font-size:10pt; opacity:.92; max-width:78%;}
+  .cover .meta{margin-top:16px; font-size:8pt; opacity:.8;}
+
+  .stats{display:flex; gap:9px; margin:16px 0 22px;}
+  .stat{
+    flex:1; border:1px solid var(--line); border-radius:10px;
+    padding:11px 13px; background:#fff;
+  }
+  .stat .n{font-size:19pt; font-weight:800; color:var(--primary); letter-spacing:-.02em; line-height:1;}
+  .stat .l{font-size:7.6pt; color:var(--ink-2); margin-top:5px; line-height:1.3;}
+
+  h2{
+    font-size:12.5pt; font-weight:800; color:var(--primary-dark);
+    letter-spacing:-.01em; margin:0 0 9px;
+    padding-bottom:6px; border-bottom:2px solid var(--primary-light);
+  }
+  h2 .tag{
+    font-size:7.5pt; font-weight:700; color:var(--ink-3);
+    letter-spacing:.06em; text-transform:uppercase; margin-left:8px;
+  }
+  section{margin-bottom:20px;}
+
+  /* ── Flow ── */
+  .flow{display:flex; align-items:stretch; gap:7px; margin-bottom:8px;}
+  .flow .step{
+    flex:1; border:1px solid var(--line); border-radius:9px;
+    padding:9px 11px; background:#fff;
+  }
+  .flow .step .k{
+    font-size:7pt; font-weight:800; color:var(--accent);
+    letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px;
+  }
+  .flow .step .v{font-size:8.4pt; color:var(--ink-2); line-height:1.35;}
+  .flow .arrow{display:flex; align-items:center; color:var(--ink-3); font-size:13pt; font-weight:700;}
+
+  /* ── Tables ── */
+  table{width:100%; border-collapse:collapse; margin-bottom:4px;}
+  thead th{
+    background:var(--primary-light); color:var(--primary-dark);
+    font-size:7.4pt; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
+    text-align:left; padding:7px 8px; border-bottom:1.5px solid var(--primary);
+  }
+  tbody td{
+    padding:8px; border-bottom:1px solid var(--line-soft);
+    vertical-align:top; font-size:8.6pt;
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr.silent{background:#FBFCFD;}
+  tbody tr.gap{background:var(--warn-bg);}
+
+  .code{
+    font-family:'SF Mono',Menlo,Consolas,monospace;
+    font-size:8.6pt; font-weight:700; color:var(--primary-dark);
+  }
+  .mono-sm{
+    font-family:'SF Mono',Menlo,Consolas,monospace;
+    font-size:7.4pt; color:var(--ink-3);
+  }
+  .label-name{font-weight:700; color:var(--ink);}
+  .portal-name{color:var(--ink-2); font-size:8.2pt;}
+
+  .badge{
+    display:inline-block; padding:2.5px 7px; border-radius:20px;
+    font-size:7pt; font-weight:800; letter-spacing:.05em;
+    text-transform:uppercase; white-space:nowrap;
+  }
+  .b-send{background:var(--send-bg); color:var(--send); border:1px solid #BFE0D3;}
+  .b-silent{background:var(--silent-bg); color:var(--silent); border:1px solid var(--line);}
+  .b-warn{background:var(--warn-bg); color:var(--warn); border:1px solid #F5D9A8;}
+
+  .msg{
+    background:var(--accent-light); border-left:3px solid var(--accent);
+    border-radius:0 6px 6px 0; padding:7px 9px; margin-top:5px;
+    font-size:8.2pt; color:var(--ink); line-height:1.45;
+  }
+  .msg .lead{
+    display:block; font-size:6.8pt; font-weight:800; color:var(--accent);
+    letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px;
+  }
+  .msg .link-tail{
+    display:block; margin-top:5px; padding-top:5px;
+    border-top:1px dashed #B9DFE5; color:var(--ink-2); font-size:7.6pt;
+    font-family:'SF Mono',Menlo,Consolas,monospace;
+  }
+  .none{color:var(--ink-3); font-style:italic; font-size:8.2pt;}
+
+  /* ── Demo card ── */
+  .demo{
+    border:2px solid var(--primary); border-radius:12px;
+    padding:15px 17px; background:var(--primary-light);
+  }
+  .demo h3{
+    font-size:10.5pt; color:var(--primary-dark); margin-bottom:10px; font-weight:800;
+  }
+  .demo-grid{display:flex; flex-wrap:wrap; gap:9px 22px; margin-bottom:11px;}
+  .demo-grid div{min-width:150px;}
+  .demo-grid .k{
+    font-size:6.9pt; font-weight:800; color:var(--primary);
+    letter-spacing:.09em; text-transform:uppercase; margin-bottom:2px;
+  }
+  .demo-grid .v{font-size:8.6pt; color:var(--ink); font-family:'SF Mono',Menlo,Consolas,monospace;}
+  .linkbox{
+    background:#fff; border:1px solid #BFE0D3; border-radius:8px;
+    padding:10px 12px; margin-top:4px;
+  }
+  .linkbox .k{
+    font-size:6.9pt; font-weight:800; color:var(--primary);
+    letter-spacing:.09em; text-transform:uppercase; margin-bottom:4px;
+  }
+  .linkbox .url{
+    font-family:'SF Mono',Menlo,Consolas,monospace; font-size:8.8pt;
+    color:var(--primary-dark); font-weight:700; word-break:break-all; line-height:1.4;
+  }
+
+  /* ── Notes ── */
+  .note{
+    border:1px solid var(--line); border-left:3px solid var(--warn);
+    border-radius:0 8px 8px 0; padding:9px 12px; margin-bottom:8px; background:#fff;
+  }
+  .note .t{font-size:9pt; font-weight:800; color:var(--ink); margin-bottom:3px;}
+  .note .d{font-size:8.3pt; color:var(--ink-2); line-height:1.45;}
+  .note .d code{
+    font-family:'SF Mono',Menlo,Consolas,monospace; font-size:7.8pt;
+    background:var(--line-soft); padding:1px 4px; border-radius:3px; color:var(--primary-dark);
+  }
+  .note.ok{border-left-color:var(--primary);}
+
+  .avoid{page-break-inside:avoid;}
+  .newpage{page-break-before:always;}
+
+  footer{
+    margin-top:20px; padding-top:9px; border-top:1px solid var(--line);
+    font-size:7.2pt; color:var(--ink-3); display:flex; justify-content:space-between;
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">Medically Modern &nbsp;·&nbsp; Patient Portal</div>
+  <h1>Patient Intake Texting</h1>
+  <div class="sub">Every pipeline stage, which ones send a text message, and the exact wording the patient receives.</div>
+  <div class="meta">Generated 27 July 2026 &nbsp;·&nbsp; Verified against live Monday.com boards and deployed backend</div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="n">19</div><div class="l">Total stages across<br>4 Monday boards</div></div>
+  <div class="stat"><div class="n">8</div><div class="l">Intake stages that<br>send a text</div></div>
+  <div class="stat"><div class="n">11</div><div class="l">Stages that are<br>silent by design</div></div>
+  <div class="stat"><div class="n">1</div><div class="l">Subscriber text<br>(outside intake)</div></div>
+</div>
+
+<section class="avoid">
+  <h2>How a text gets sent</h2>
+  <div class="flow">
+    <div class="step">
+      <div class="k">1 · Trigger</div>
+      <div class="v">A coordinator changes the <strong>Stage Advancer</strong> column in Monday (or a new item is created).</div>
+    </div>
+    <div class="arrow">›</div>
+    <div class="step">
+      <div class="k">2 · Webhook</div>
+      <div class="v">Monday calls the portal backend on a secret URL. Only the Stage Advancer column is watched.</div>
+    </div>
+    <div class="arrow">›</div>
+    <div class="step">
+      <div class="k">3 · Gate</div>
+      <div class="v">Backend sends only if the stage is <strong>patient-visible</strong> and <strong>tier&nbsp;1 or 2</strong>. Tier 3 stays internal.</div>
+    </div>
+    <div class="arrow">›</div>
+    <div class="step">
+      <div class="k">4 · Send</div>
+      <div class="v">RingCentral SMS goes out, with the patient's personal portal link appended.</div>
+    </div>
+  </div>
+  <div class="note ok" style="margin-top:9px;">
+    <div class="t">Every intake text ends with the same tracking line</div>
+    <div class="d">The patient's private portal link is appended automatically to all Phase&nbsp;0–3 messages: <code>Track your progress: https://medicallymodern.com/portal?p={patient UID}</code> &nbsp;— the UID is a random identifier stored on the Monday item, so the link is unguessable and unique per patient. The Phase&nbsp;4 subscriber text is the one exception; it carries its own bookmark link instead.</div>
+  </div>
+</section>
+
+<section class="avoid">
+  <h2>Demo patient <span class="tag">Live on the Medical Evaluation board</span></h2>
+  <div class="demo">
+    <h3>[TEST] Demo Patient — CEO Walkthrough</h3>
+    <div class="demo-grid">
+      <div><div class="k">Monday item ID</div><div class="v">12637989471</div></div>
+      <div><div class="k">Board</div><div class="v">Medical Evaluation</div></div>
+      <div><div class="k">Current stage</div><div class="v">1B · Send Request</div></div>
+      <div><div class="k">Phone (fictional)</div><div class="v">+1 555-010-0042</div></div>
+      <div><div class="k">Date of intake</div><div class="v">2026-07-27</div></div>
+    </div>
+    <div class="linkbox">
+      <div class="k">Patient portal link &nbsp;·&nbsp; live and verified</div>
+      <div class="url">https://medicallymodern.com/portal?p=1db0221f-20c9-48a9-8715-6cdfee4e67a9</div>
+    </div>
+    <div class="note" style="margin:10px 0 0; border-left-color:var(--accent); background:#fff;">
+      <div class="d"><strong>Texting this link to yourself is the strongest part of the demo.</strong> iMessage renders a live preview card that reads <em>"Demo — Working With Your Doctor · Step 2 of 9"</em>, generated on the fly from the patient's current stage. Opening it shows the progress tracker.</div>
+    </div>
+    <div class="note" style="margin:8px 0 0; border-left-color:var(--accent); background:#fff;">
+      <div class="d"><strong>The phone number is in the 555-01xx reserved fictional range</strong>, so no real handset is ever reached during the demo. The name starts with <code>[TEST]</code>, which is the flag the backend uses to permit sending while real-patient texting is switched off. To make texts actually land on a phone during the demo, swap in your own mobile number on the Monday item.</div>
+    </div>
+    <div class="note" style="margin:8px 0 0; border-left-color:var(--accent); background:#fff;">
+      <div class="d"><strong>The UID is assigned by the system, not by hand.</strong> When the item was created the backend generated this identifier and wrote it back to the Monday item automatically. Anything typed into the Patient UID column beforehand is overwritten — so always read the link's UID off the Monday item after creating it.</div>
+    </div>
+  </div>
+</section>
+
+<section class="avoid newpage">
+  <h2>Phase 0 — Referral intake <span class="tag">Medical Evaluation board</span></h2>
+  <table>
+    <thead><tr>
+      <th style="width:7%">Code</th><th style="width:25%">Trigger in Monday</th>
+      <th style="width:19%">Shown to patient as</th><th style="width:13%">Text?</th><th style="width:36%">Message sent</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td class="code">0B</td>
+        <td><span class="label-name">New item created</span><br><span class="mono-sm">create_item webhook</span></td>
+        <td class="portal-name">Referral Received</td>
+        <td><span class="badge b-send">Text sent</span></td>
+        <td>
+          <div class="msg">
+            <span class="lead">Patient receives</span>
+            We've received your referral and are getting started on your case. We'll keep you updated as we work through the process.
+            <span class="link-tail">Track your progress: https://medicallymodern.com/portal?p=…</span>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="avoid">
+  <h2>Phase 1 — Medical evaluation <span class="tag">Stage Advancer column</span></h2>
+  <table>
+    <thead><tr>
+      <th style="width:7%">Code</th><th style="width:25%">Stage Advancer value</th>
+      <th style="width:19%">Shown to patient as</th><th style="width:13%">Text?</th><th style="width:36%">Message sent</th>
+    </tr></thead>
+    <tbody>
+      <tr class="silent">
+        <td class="code">1A</td>
+        <td><span class="label-name">Evaluate MN</span></td>
+        <td class="portal-name">Medical Review In Progress</td>
+        <td><span class="badge b-silent">Silent</span></td>
+        <td class="none">Internal stage — hidden from the portal, no message defined.</td>
+      </tr>
+      <tr>
+        <td class="code">1B</td>
+        <td><span class="label-name">Send Request</span></td>
+        <td class="portal-name">Working With Your Doctor</td>
+        <td><span class="badge b-send">Text sent</span></td>
+        <td>
+          <div class="msg">
+            <span class="lead">Patient receives</span>
+            We're coordinating with your doctor's office to gather the medical documentation needed for your equipment.
+            <span class="link-tail">Track your progress: https://medicallymodern.com/portal?p=…</span>
+          </div>
+        </td>
+      </tr>
+      <tr class="silent">
+        <td class="code">1C</td>
+        <td><span class="label-name">Confirm Receipt</span></td>
+        <td class="portal-name">Confirming Doctor Received</td>
+        <td><span class="badge b-silent">Silent</span></td>
+        <td class="none">Internal stage — hidden from the portal, no message defined.</td>
+      </tr>
+      <tr>
+        <td class="code">1D</td>
+        <td><span class="label-name">Chase Clinicals</span></td>
+        <td class="portal-name">Awaiting Medical Records</td>
+        <td><span class="badge b-send">Text sent</span></td>
+        <td>
+          <div class="msg">
+            <span class="lead">Patient receives</span>
+            We're actively following up with your doctor's office to obtain your medical records. This step can sometimes take a few days.
+            <span class="link-tail">Track your progress: https://medicallymodern.com/portal?p=…</span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="code">1E</td>
+        <td><span class="label-name">Completed</span></td>
+        <td class="portal-name">Medical Review Complete</td>
+        <td><span class="badge b-send">Text sent</span></td>
+        <td>
+          <div class="msg">
+            <span class="lead">Patient receives</span>
+            Great news — your medical records have been reviewed and approved. We're now moving to the insurance verification step.
+            <span class="link-tail">Track your progress: https://medicallymodern.com/portal?p=…</span>
+          </div>
+        </td>
+      </tr>
+      <tr class="silent">
+        <td class="code">—</td>
+        <td><span class="label-name">Stuck</span></td>
+        <td class="portal-name">Under Review</td>
+        <td><span class="badge b-silent">Silent</span></td>
+        <td class="none">Deliberately silent — the patient is never told they are stuck.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="avoid">
+  <h2>Phase 2 — Insurance <span class="tag">Stage Advancer column</span></h2>
+  <table>
+    <thead><tr>
+      <th style="width:7%">Code</th><th style="width:25%">Stage Advancer value</th>
+      <th style="width:19%">Shown to patient as</th><th style="width:13%">Text?</th><th style="width:36%">Message sent</th>
+    </tr></thead>
+    <tbody>
+      <tr class="silent">
+        <td class="code">2A</td>
+        <td><span class="label-name">Benefits / SoS</span></td>
+        <td class="portal-name">Verifying Your Benefits</td>
+        <td><span class="badge b-silent">Silent</span></td>
+        <td class="none">Internal stage — hidden from the portal, no message defined.</td>
+      </tr>
+      <tr class="silent">
+        <td class="code">2B</td>
+        <td><span class="label-name">Submit Auth.</span></td>
+        <td class="portal-name">Submitting Authorization</td>
+        <td><span class="badge b-silent">Silent</span></td>
+        <td class="none">Internal stage — hidden from the portal, no message defined.</td>
+      </tr>
+      <tr>
+        <td class="code">2C</td>
+        <td><span class="label-name">Auth. Outstanding</span></td>
+        <td class="portal-name">Authorization Pending</td>
+        <td><span class="badge b-send">Text sent</span></td>
+        <td>
+          <div class="msg">
+            <span class="lead">Patient receives</span>
+            Your prior authorization has been submitted to your insurance company. We're waiting on their decision — this typically takes 5–10 business days.
+            <span class="link-tail">Track your progress: https://medicallymodern.com/portal?p=…</span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="code">2D</td>
+        <td><span class="label-name">Auth Denied</span></td>
+        <td class="portal-name">Additional Info Requested</td>
+        <td><span class="badge b-send">Text sent</span></td>
+        <td>
+          <div class="msg">
+            <span class="lead">Patient receives</span>
+            Your insurance has requested additional information before approving your equipment. Our team is working on next steps and will be in touch.
+            <span class="link-tail">Track your progress: https://medicallymodern.com/portal?p=…</span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="code">2E</td>
+        <td><span class="label-name">Complete</span></td>
+        <td class="portal-name">Insurance Approved</td>
+        <td><span class="badge b-send">Text sent</span></td>
+        <td>
+          <div class="msg">
+            <span class="lead">Patient receives</span>
+            Your insurance has approved your equipment. We're almost there!
+            <span class="link-tail">Track your progress: https://medicallymodern.com/portal?p=…</span>
+          </div>
+        </td>
+      </tr>
+      <tr class="silent">
+        <td class="code">—</td>
+        <td><span class="label-name">Stuck / Don't Proceed</span></td>
+        <td class="portal-name">Under Review</td>
+        <td><span class="badge b-silent">Silent</span></td>
+        <td class="none">Deliberately silent — the patient is never told they are stuck.</td>
+      </tr>
+      <tr class="gap">
+        <td class="code">—</td>
+        <td><span class="label-name">DVS</span></td>
+        <td class="portal-name">Not mapped</td>
+        <td><span class="badge b-warn">Gap</span></td>
+        <td class="none">This stage exists on the Insurance board but has no entry in the portal's stage map. Moving a patient here sends no text <em>and</em> leaves their portal showing the previous stage. See note 3 overleaf.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="avoid">
+  <h2>Phase 3 — Welcome call <span class="tag">Stage Advancer column</span></h2>
+  <table>
+    <thead><tr>
+      <th style="width:7%">Code</th><th style="width:25%">Stage Advancer value</th>
+      <th style="width:19%">Shown to patient as</th><th style="width:13%">Text?</th><th style="width:36%">Message sent</th>
+    </tr></thead>
+    <tbody>
+      <tr class="silent">
+        <td class="code">3A</td>
+        <td><span class="label-name">Welcome Call</span></td>
+        <td class="portal-name">Scheduling Your Welcome Call</td>
+        <td><span class="badge b-silent">Silent</span></td>
+        <td class="none">Appears on the patient's portal, but no text is sent — the message body is empty. See note 4 overleaf.</td>
+      </tr>
+      <tr class="silent">
+        <td class="code">3B</td>
+        <td><span class="label-name">Review Profile</span></td>
+        <td class="portal-name">Final Profile Confirmation</td>
+        <td><span class="badge b-silent">Silent</span></td>
+        <td class="none">Internal stage — hidden from the portal, no message defined.</td>
+      </tr>
+      <tr>
+        <td class="code">3C</td>
+        <td><span class="label-name">Completed</span></td>
+        <td class="portal-name">You're All Set!</td>
+        <td><span class="badge b-send">Text sent</span></td>
+        <td>
+          <div class="msg">
+            <span class="lead">Patient receives</span>
+            You're all set! Your equipment order is queued. Welcome to Medically Modern!
+            <span class="link-tail">Track your progress: https://medicallymodern.com/portal?p=…</span>
+          </div>
+        </td>
+      </tr>
+      <tr class="silent">
+        <td class="code">—</td>
+        <td><span class="label-name">Stuck / Don't Proceed</span></td>
+        <td class="portal-name">Under Review</td>
+        <td><span class="badge b-silent">Silent</span></td>
+        <td class="none">Deliberately silent — the patient is never told they are stuck.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="avoid">
+  <h2>Phase 4 — Subscriber welcome <span class="tag">Subscription board · separate from intake</span></h2>
+  <table>
+    <thead><tr>
+      <th style="width:7%">Code</th><th style="width:25%">Trigger in Monday</th>
+      <th style="width:19%">Shown to patient as</th><th style="width:13%">Text?</th><th style="width:36%">Message sent</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td class="code">4A</td>
+        <td><span class="label-name">New item created</span><br><span class="mono-sm">create_item webhook</span></td>
+        <td class="portal-name">Welcome to Your Portal</td>
+        <td><span class="badge b-send">Text sent</span></td>
+        <td>
+          <div class="msg">
+            <span class="lead">Patient receives</span>
+            Welcome to your Medically Modern patient portal! You can now log in to manage your account, update your information, and track the status of your orders.<br><br>
+            Bookmark this link for easy access:<br>
+            https://medically-modern.github.io/mm-subscriber-portal/<br><br>
+            If you have any questions, our team is here to help.
+            <span class="link-tail">No progress-tracking link — this message carries its own bookmark URL.</span>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="newpage">
+  <h2>What to know before the demo</h2>
+
+  <div class="note">
+    <div class="t">1 · Real patients are not being texted right now</div>
+    <div class="d">The backend blocks every send unless the patient's name begins with <code>[TEST]</code>. Real patients are skipped with a logged reason until the <code>PRODUCTION_SMS_ENABLED</code> switch is turned on. This is the intended safety catch for development — but it does mean the system is currently silent for live patients, and flipping that switch is a deliberate go-live decision.</div>
+  </div>
+
+  <div class="note">
+    <div class="t">2 · The "don't nag the patient" timers are switched off</div>
+    <div class="d">Two stages were designed to hold back: <strong>1B</strong> should only text if 24 hours have passed, and <strong>1D</strong> only after 3 days. That timing logic is currently bypassed in the code, so a text goes out on <em>every</em> advancement into those stages. If a coordinator moves a patient back and forth, the patient gets a duplicate text each time.</div>
+  </div>
+
+  <div class="note">
+    <div class="t">3 · The Insurance board has a stage the portal doesn't know about</div>
+    <div class="d">The <strong>DVS</strong> stage exists in Monday but is missing from the portal's stage map. A patient parked there gets no text and their portal keeps showing whatever stage they were in previously, so the portal quietly goes stale rather than showing an error.</div>
+  </div>
+
+  <div class="note">
+    <div class="t">4 · "Scheduling Your Welcome Call" shows on the portal but sends nothing</div>
+    <div class="d">Stage <strong>3A</strong> is visible to the patient in the portal, but its message body is empty and it is classified as internal-tier, so no text is sent. The patient sees the stage change online without being notified.</div>
+  </div>
+
+  <div class="note">
+    <div class="t">5 · Dragging a patient into "Completed" does not send the final text</div>
+    <div class="d">The <strong>3C · You're All Set!</strong> text only fires when the <strong>Stage Advancer</strong> column is set to <em>Completed</em>. Moving the item into the Completed group by dragging it does nothing — no webhook is registered for group moves. Worth calling out to coordinators, since dragging is the more natural gesture.</div>
+  </div>
+
+  <div class="note ok">
+    <div class="t">6 · Coverage at a glance</div>
+    <div class="d">Of the 19 stages, 8 intake stages text the patient and 11 stay silent. The silence is mostly deliberate — internal review steps and "stuck" states are hidden on purpose so patients aren't alarmed. The two unintentional gaps are DVS (note 3) and 3A (note 4).</div>
+  </div>
+</section>
+
+<footer>
+  <span>Medically Modern — Patient Intake Texting Reference</span>
+  <span>Verified 27 July 2026 against live Monday boards &amp; deployed backend</span>
+</footer>
+
+</body>
+</html>
