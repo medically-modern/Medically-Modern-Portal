@@ -97,6 +97,18 @@ app.get("/health", async (req, res) => {
   });
 });
 
+// Reads the durable record of a delivered intake SMS. Fails open toward
+// sending: being unable to prove a patient was texted is not proof they were.
+async function alreadyDeliveredIntakeSms(itemId) {
+  try {
+    const history = await getNotificationHistory(itemId);
+    return history.some((entry) => entry.stage === INTAKE_SMS_STAGE);
+  } catch (err) {
+    console.error(`[webhook] Could not read notification history for ${itemId}: ${err.message}`);
+    return false;
+  }
+}
+
 // ─── Intake SMS dispatch ───
 // The one text a patient ever receives. Both call sites below go through here,
 // so the ordering guarantees live in exactly one place.
@@ -104,11 +116,13 @@ app.get("/health", async (req, res) => {
 // Two failure modes this has to survive, because there is no second text to
 // paper over either:
 //
-//   Sending twice — Monday redelivers webhooks, and the retroactive path fires
-//   whenever a UID read comes back empty. Under the old eight-text model a
+//   Sending twice — Monday redelivers webhooks, and the recovery path re-attempts
+//   on every later Medical Eval stage change. Under the old eight-text model a
 //   duplicate was noise; now it would be the second text a patient ever gets,
 //   telling someone halfway through insurance we just received their referral.
-//   The claim is taken with SET NX so overlapping deliveries cannot both pass.
+//   The claim is taken with SET NX so overlapping deliveries cannot both pass,
+//   and the notification history is checked first so patients who were texted
+//   before the claim key existed are not told their referral just arrived.
 //
 //   Not sending at all — worse, and unrecoverable from the patient's side. So
 //   every failure path here leans toward eventually sending: the claim starts
@@ -129,6 +143,16 @@ async function sendIntakeSms(itemId, { phone, patientUid, patientName }) {
   }
   if (!phone) {
     console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no phone number on record`);
+    return;
+  }
+
+  // A delivered intake SMS is recorded in the notification history, and under
+  // this model nothing else is. That log is also the only trace for patients
+  // texted under the old multi-text model, before the claim key existed --
+  // without it the recovery path would tell someone sitting in insurance that
+  // their referral has just come in.
+  if (await alreadyDeliveredIntakeSms(itemId)) {
+    console.log(`[webhook] ${INTAKE_SMS_STAGE} skipped for item ${itemId}: already delivered`);
     return;
   }
 
@@ -328,16 +352,6 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
           }
         }
 
-        // If this is the first time we see this item on the Medical Eval board,
-        // also fire the 0B (Referral Received) notification — the create_item
-        // webhook was missed, so the patient never got their initial text.
-        // This path matters more under the single-text model: it is the only
-        // recovery for a patient whose create_item webhook never fired, and so
-        // the only way they ever receive their link.
-        if (String(boardId) === BOARDS.MEDICAL_EVAL && patientStage.code !== INTAKE_SMS_STAGE) {
-          console.log(`[webhook] Automation-created item detected on Medical Eval — sending retroactive ${INTAKE_SMS_STAGE} notification`);
-          await sendIntakeSms(itemId, { phone, patientUid, patientName });
-        }
       }
 
       // Update Redis cache
@@ -370,6 +384,21 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
         await sendIntakeSms(itemId, { phone, patientUid, patientName });
       } else {
         console.log(`[webhook] Portal updated silently → ${patientStage.code} (single-text model)`);
+
+        // Recovery. 0B fires only on create_item, so before this a patient whose
+        // one send failed -- a RingCentral blip, an expired JWT, a Monday write
+        // that lost the phone -- had no route left to their link: the portal kept
+        // updating and they were never told it existed. Re-attempt on every later
+        // Medical Eval stage change instead, which costs one Redis read for the
+        // overwhelming majority who already have theirs.
+        //
+        // Medical Eval only. Each board gets its own item id, so the history and
+        // claim that prove delivery do not follow a patient to Insurance -- and a
+        // recovery attempt there would read as a fresh referral to someone whose
+        // authorization is already in flight.
+        if (String(boardId) === BOARDS.MEDICAL_EVAL) {
+          await sendIntakeSms(itemId, { phone, patientUid, patientName });
+        }
       }
 
       // ─── Previous multi-text model — retained for reference ───
