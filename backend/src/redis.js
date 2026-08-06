@@ -159,6 +159,39 @@ async function getNotificationHistory(itemId) {
   return entries.map(e => JSON.parse(e));
 }
 
+// ─── Intake SMS claim ───
+// The single-text model needs "have we sent this yet" and the send itself to be
+// atomic. Reading the notification history and then sending leaves a window as
+// wide as the RingCentral round trip -- up to 15s -- and two overlapping Monday
+// deliveries would both pass the check and both text the patient. SET NX closes
+// that window: whoever creates the key owns the send.
+//
+// The claim is taken provisionally and only promoted once the provider confirms.
+// That is what makes the failure paths safe: an attempt that fails, throws, or
+// comes back ambiguous simply lets the short claim lapse. There is no delete to
+// fail, so no way to strand a patient behind a 90-day key and leave them with no
+// link at all. The cost is that an SMS which RingCentral accepted but reported
+// as failed can be re-sent once the window passes -- at-least-once, chosen
+// deliberately: a duplicate text is recoverable, a missing one is not.
+const INTAKE_CLAIM_PENDING_TTL = 15 * 60;              // unconfirmed attempt
+const INTAKE_CLAIM_CONFIRMED_TTL = 60 * 60 * 24 * 90;  // matches notification history retention
+
+async function claimIntakeSms(itemId) {
+  const r = getRedis();
+  // No Redis means no de-duplication is possible. Send anyway -- same reasoning.
+  if (!r) return true;
+  const res = await r.set(`intake_sms:${itemId}`, "pending", "EX", INTAKE_CLAIM_PENDING_TTL, "NX");
+  return res === "OK";
+}
+
+// Promote a confirmed send to the full retention window. Until this runs, the
+// claim is holding a slot for an attempt we cannot yet vouch for.
+async function confirmIntakeSms(itemId) {
+  const r = getRedis();
+  if (!r) return;
+  await r.set(`intake_sms:${itemId}`, new Date().toISOString(), "EX", INTAKE_CLAIM_CONFIRMED_TTL);
+}
+
 // ─── Health check ───
 async function redisHealthCheck() {
   const r = getRedis();
@@ -175,5 +208,6 @@ module.exports = {
   getRedis, cachePatientState, getPatientState,
   findPatientByPhoneCache, findPatientByUidCache, indexPhone, indexUid,
   logNotification, getNotificationHistory,
+  claimIntakeSms, confirmIntakeSms,
   redisHealthCheck
 };

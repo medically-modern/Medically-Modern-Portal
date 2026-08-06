@@ -4,8 +4,8 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
-const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, PHONE_COLUMN_SUBSCRIPTION } = require("./config");
-const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, redisHealthCheck } = require("./redis");
+const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, buildIntakeSms } = require("./config");
+const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
 const fs = require("fs");
@@ -97,6 +97,81 @@ app.get("/health", async (req, res) => {
   });
 });
 
+// ─── Intake SMS dispatch ───
+// The one text a patient ever receives. Both call sites below go through here,
+// so the ordering guarantees live in exactly one place.
+//
+// Two failure modes this has to survive, because there is no second text to
+// paper over either:
+//
+//   Sending twice — Monday redelivers webhooks, and the retroactive path fires
+//   whenever a UID read comes back empty. Under the old eight-text model a
+//   duplicate was noise; now it would be the second text a patient ever gets,
+//   telling someone halfway through insurance we just received their referral.
+//   The claim is taken with SET NX so overlapping deliveries cannot both pass.
+//
+//   Not sending at all — worse, and unrecoverable from the patient's side. So
+//   every failure path here leans toward eventually sending: the claim starts
+//   provisional and short-lived, and only a confirmed send promotes it to the
+//   full retention window. An attempt that fails, throws, or leaves Redis
+//   unreachable lapses on its own rather than needing a cleanup write that
+//   could itself fail and strand the patient behind a 90-day key.
+//
+// Nothing is written to the notification history unless the message actually
+// went out. That log gates nothing now, but it is the audit trail, and recording
+// an attempt as a delivery is how a patient ends up looking texted when they
+// were not.
+async function sendIntakeSms(itemId, { phone, patientUid, patientName }) {
+  const message = buildIntakeSms(patientUid);
+  if (!message) {
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no patient UID, link would be dead`);
+    return;
+  }
+  if (!phone) {
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no phone number on record`);
+    return;
+  }
+
+  // Claim before sending, never after: the check and the send have to be atomic.
+  let claimed;
+  try {
+    claimed = await claimIntakeSms(itemId);
+  } catch (err) {
+    // Redis unreachable. Fail open and send -- the duplicate risk is bounded,
+    // the never-sent risk is not.
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} claim check failed for item ${itemId}: ${err.message} — sending anyway`);
+    claimed = true;
+  }
+  if (!claimed) {
+    console.log(`[webhook] ${INTAKE_SMS_STAGE} skipped for item ${itemId}: already claimed`);
+    return;
+  }
+
+  let result;
+  try {
+    result = await sendSMS(phone, message, { patientName });
+  } catch (err) {
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} THREW for item ${itemId}: ${err.message} (claim lapses in 15m, will retry)`);
+    return;
+  }
+
+  if (!result.sent) {
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} NOT SENT for item ${itemId}: ${result.reason} (claim lapses in 15m, will retry)`);
+    return;
+  }
+
+  // The text is out. Bookkeeping failures past this point are logged, never
+  // thrown: a 500 here makes Monday redeliver a webhook we have already acted
+  // on, and the provisional claim may lapse before that redelivery arrives.
+  try {
+    await confirmIntakeSms(itemId);
+    await logNotification(itemId, INTAKE_SMS_STAGE, message);
+    console.log(`[webhook] SMS: SENT → ${INTAKE_SMS_STAGE} (item ${itemId})`);
+  } catch (err) {
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} sent for item ${itemId} but bookkeeping failed: ${err.message}`);
+  }
+}
+
 // ─── [#1] Webhook receiver from Monday.com — URL-based secret verification ───
 // The webhook URL is: /webhooks/monday/{MONDAY_WEBHOOK_SECRET}
 // Monday.com stores the full URL when the webhook is created. An attacker would
@@ -173,15 +248,23 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
         }
       }
 
-      // Send the welcome SMS
-      const welcomeMsg = MESSAGES[SUBSCRIBER_WELCOME.id];
-      if (welcomeMsg && subPhone) {
-        const smsResult = await sendSMS(subPhone, welcomeMsg, { patientName: subName });
-        await logNotification(itemId, "4A", welcomeMsg);
-        console.log(`[webhook] Subscriber welcome SMS: ${smsResult.sent ? "SENT" : smsResult.reason} → ${subName} (${subPhone})`);
-      } else {
-        console.log(`[webhook] Subscriber welcome SMS skipped — phone: "${subPhone}", msg: ${!!welcomeMsg}`);
-      }
+      // Welcome SMS suppressed — single-text model. The UID write and the
+      // indexing below still run, so the subscriber item stays resolvable and
+      // this can be switched back on without backfilling anyone.
+      // NOTE: this was the only thing that told patients the subscriber portal
+      // exists. Nothing else links them to it now.
+      //
+      // To restore, uncomment:
+      //
+      // const welcomeMsg = MESSAGES[SUBSCRIBER_WELCOME.id];
+      // if (welcomeMsg && subPhone) {
+      //   const smsResult = await sendSMS(subPhone, welcomeMsg, { patientName: subName });
+      //   await logNotification(itemId, "4A", welcomeMsg);
+      //   console.log(`[webhook] Subscriber welcome SMS: ${smsResult.sent ? "SENT" : smsResult.reason} → ${subName} (${subPhone})`);
+      // } else {
+      //   console.log(`[webhook] Subscriber welcome SMS skipped — phone: "${subPhone}", msg: ${!!welcomeMsg}`);
+      // }
+      console.log(`[webhook] Subscriber welcome SMS suppressed (single-text model) → ${subName}`);
 
       // Cache and index
       if (subPhone) await indexPhone(subPhone, itemId);
@@ -248,18 +331,12 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
         // If this is the first time we see this item on the Medical Eval board,
         // also fire the 0B (Referral Received) notification — the create_item
         // webhook was missed, so the patient never got their initial text.
-        if (String(boardId) === BOARDS.MEDICAL_EVAL && patientStage.code !== "0B") {
-          console.log(`[webhook] Automation-created item detected on Medical Eval — sending retroactive 0B notification`);
-          const msg0B = MESSAGES[REFERRAL_RECEIVED.id];
-          if (msg0B && phone) {
-            let fullMsg0B = msg0B;
-            if (patientUid) {
-              fullMsg0B += `\n\nTrack your progress: ${PORTAL_BASE_URL}?p=${patientUid}`;
-            }
-            const sms0B = await sendSMS(phone, fullMsg0B, { patientName });
-            await logNotification(itemId, "0B", msg0B);
-            console.log(`[webhook] Retroactive 0B SMS: ${sms0B.sent ? "SENT" : sms0B.reason}`);
-          }
+        // This path matters more under the single-text model: it is the only
+        // recovery for a patient whose create_item webhook never fired, and so
+        // the only way they ever receive their link.
+        if (String(boardId) === BOARDS.MEDICAL_EVAL && patientStage.code !== INTAKE_SMS_STAGE) {
+          console.log(`[webhook] Automation-created item detected on Medical Eval — sending retroactive ${INTAKE_SMS_STAGE} notification`);
+          await sendIntakeSms(itemId, { phone, patientUid, patientName });
         }
       }
 
@@ -284,27 +361,44 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
 
       console.log(`[webhook] Cached: ${patientStage.code} | Visible: ${patientStage.visible} | Tier: ${patientStage.tier}`);
 
-      // Notification dispatch
-      if (patientStage.visible && patientStage.tier <= 2) {
-        const message = MESSAGES[patientStage.id];
-
-        // Send on every tier 1 and tier 2 advancement
-        // TODO: re-enable time gating (gt24hrs, gt3days) when going to production
-        const shouldSend = true;
-
-        if (shouldSend && message) {
-          // Append portal link with patient UID
-          let fullMessage = message;
-          if (patientUid) {
-            fullMessage += `\n\nTrack your progress: ${PORTAL_BASE_URL}?p=${patientUid}`;
-          }
-          const smsResult = await sendSMS(phone, fullMessage, { patientName });
-          await logNotification(itemId, patientStage.code, message);
-          console.log(`[webhook] SMS: ${smsResult.sent ? "SENT" : smsResult.reason} → ${patientStage.code}`);
-        } else {
-          console.log(`[webhook] SMS skipped (conditional tier, too recent)`);
-        }
+      // ─── Notification dispatch — single-text model ───
+      // Exactly one SMS per patient, at 0B, carrying the tracking link. Every
+      // later stage updates the portal silently: cachePatientState above runs
+      // unconditionally, so the link stays current whether or not we text.
+      // Widening this means adding stage codes to the check, nothing more.
+      if (patientStage.code === INTAKE_SMS_STAGE) {
+        await sendIntakeSms(itemId, { phone, patientUid, patientName });
+      } else {
+        console.log(`[webhook] Portal updated silently → ${patientStage.code} (single-text model)`);
       }
+
+      // ─── Previous multi-text model — retained for reference ───
+      // Texted on every visible tier-1/tier-2 advancement: 0B, 1B, 1D, 1E, 2C,
+      // 2D, 2E, 3C — roughly eight per patient. The `condition` fields in
+      // STAGE_MAP (gt24hrs, gt3days, always_plus_call) were never wired up; the
+      // hardcoded shouldSend below is why every advancement fired immediately.
+      // Restoring this means re-implementing that gating, not just uncommenting.
+      //
+      // if (patientStage.visible && patientStage.tier <= 2) {
+      //   const message = MESSAGES[patientStage.id];
+      //
+      //   // Send on every tier 1 and tier 2 advancement
+      //   // TODO: re-enable time gating (gt24hrs, gt3days) when going to production
+      //   const shouldSend = true;
+      //
+      //   if (shouldSend && message) {
+      //     // Append portal link with patient UID
+      //     let fullMessage = message;
+      //     if (patientUid) {
+      //       fullMessage += `\n\nTrack your progress: ${PORTAL_BASE_URL}?p=${patientUid}`;
+      //     }
+      //     const smsResult = await sendSMS(phone, fullMessage, { patientName });
+      //     await logNotification(itemId, patientStage.code, message);
+      //     console.log(`[webhook] SMS: ${smsResult.sent ? "SENT" : smsResult.reason} → ${patientStage.code}`);
+      //   } else {
+      //     console.log(`[webhook] SMS skipped (conditional tier, too recent)`);
+      //   }
+      // }
     }
 
     res.json({ status: "received", stage: patientStage?.code || "unmapped" });
