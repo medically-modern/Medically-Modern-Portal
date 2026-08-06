@@ -59,7 +59,10 @@ const STAGE_MAP = {
 const REFERRAL_RECEIVED = { id: "referral_received", phase: 0, label: "Referral Received", visible: true, tier: 1, code: "0B" };
 const SUBSCRIBER_WELCOME = { id: "subscriber_welcome", phase: 4, label: "Welcome to Your Portal", visible: true, tier: 1, code: "4A" };
 
-// Notification messages
+// Patient-facing stage copy. Under the single-text model below these are no
+// longer SMS bodies — they are the description shown for the current stage on
+// the tracking portal, cached into patient state and served by /api/status.
+// Every stage needs one, including the ones that never text.
 const MESSAGES = {
   referral_received: "We've received your referral and are getting started on your case. We'll keep you updated as we work through the process.",
   send_request: "We're coordinating with your doctor's office to gather the medical documentation needed for your equipment.",
@@ -70,8 +73,35 @@ const MESSAGES = {
   insurance_complete: "Your insurance has approved your equipment. We're almost there!",
   welcome_call: "",
   completed: "You're all set! Your equipment order is queued. Welcome to Medically Modern!",
+  // Retained but no longer sent — the 4A welcome SMS is suppressed under the
+  // single-text model. Kept so re-enabling it needs no copywriting.
   subscriber_welcome: "Welcome to your Medically Modern patient portal! You can now log in to manage your account, update your information, and track the status of your orders.\n\nBookmark this link for easy access:\nhttps://medically-modern.github.io/mm-subscriber-portal/\n\nIf you have any questions, our team is here to help."
 };
+
+// ─── The one text ───
+// A patient receives exactly one SMS for the whole intake, sent when their case
+// lands on the Medical Evaluation board. Every stage after it updates the portal
+// silently, so this message carries the entire relationship: it has to explain
+// that the link is the channel, and earn a bookmark. Nothing else reaches them.
+const INTAKE_SMS_STAGE = "0B";
+
+// Returns null when there is no UID to build a link from. That is deliberate —
+// this text promises a link, and sending it without one spends the patient's
+// only notification on a dead end. Callers must treat null as "don't send".
+//
+// Deliberately ASCII: em-dashes and curly quotes fall outside GSM-7, which
+// forces the whole message into UCS-2 at 67 chars per segment instead of 153.
+// The rest of MESSAGES above still uses them, but those never go out as SMS
+// now — this one does, and it is long enough for the encoding to matter.
+function buildIntakeSms(patientUid) {
+  if (!patientUid) return null;
+  return `Hi, it's Medically Modern. We've received your referral and we're getting started on your order.
+
+Track your progress anytime:
+${PORTAL_BASE_URL}?p=${patientUid}
+
+Save this link - it updates at every step, so you can always see where things stand. We'll contact you directly if we ever need something from you.`;
+}
 
 // Groups that indicate "Completed" on Welcome Call board
 const COMPLETED_GROUPS = {
@@ -80,5 +110,6 @@ const COMPLETED_GROUPS = {
 
 module.exports = {
   BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, PHONE_COLUMN, PHONE_COLUMN_SUBSCRIPTION, NAME_COLUMN, INTAKE_DATE_COLUMN,
-  PATIENT_UID_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS
+  PATIENT_UID_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS,
+  INTAKE_SMS_STAGE, buildIntakeSms
 };
