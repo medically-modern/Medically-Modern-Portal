@@ -5,7 +5,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
 const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, buildIntakeSms } = require("./config");
-const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, releaseIntakeSmsClaim, redisHealthCheck } = require("./redis");
+const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
 const fs = require("fs");
@@ -110,11 +110,17 @@ app.get("/health", async (req, res) => {
 //   telling someone halfway through insurance we just received their referral.
 //   The claim is taken with SET NX so overlapping deliveries cannot both pass.
 //
-//   Not sending at all — worse. The claim is released whenever the send fails,
-//   so a later delivery retries. Nothing is written to the notification history
-//   unless the message actually went out: that log gates nothing on its own now,
-//   but it is the audit trail, and recording an attempt as a delivery is how a
-//   patient ends up in the pipeline believing we texted them when we did not.
+//   Not sending at all — worse, and unrecoverable from the patient's side. So
+//   every failure path here leans toward eventually sending: the claim starts
+//   provisional and short-lived, and only a confirmed send promotes it to the
+//   full retention window. An attempt that fails, throws, or leaves Redis
+//   unreachable lapses on its own rather than needing a cleanup write that
+//   could itself fail and strand the patient behind a 90-day key.
+//
+// Nothing is written to the notification history unless the message actually
+// went out. That log gates nothing now, but it is the audit trail, and recording
+// an attempt as a delivery is how a patient ends up looking texted when they
+// were not.
 async function sendIntakeSms(itemId, { phone, patientUid, patientName }) {
   const message = buildIntakeSms(patientUid);
   if (!message) {
@@ -127,7 +133,16 @@ async function sendIntakeSms(itemId, { phone, patientUid, patientName }) {
   }
 
   // Claim before sending, never after: the check and the send have to be atomic.
-  if (!(await claimIntakeSms(itemId))) {
+  let claimed;
+  try {
+    claimed = await claimIntakeSms(itemId);
+  } catch (err) {
+    // Redis unreachable. Fail open and send -- the duplicate risk is bounded,
+    // the never-sent risk is not.
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} claim check failed for item ${itemId}: ${err.message} — sending anyway`);
+    claimed = true;
+  }
+  if (!claimed) {
     console.log(`[webhook] ${INTAKE_SMS_STAGE} skipped for item ${itemId}: already claimed`);
     return;
   }
@@ -136,17 +151,24 @@ async function sendIntakeSms(itemId, { phone, patientUid, patientName }) {
   try {
     result = await sendSMS(phone, message, { patientName });
   } catch (err) {
-    await releaseIntakeSmsClaim(itemId);
-    console.error(`[webhook] ${INTAKE_SMS_STAGE} THREW for item ${itemId}: ${err.message} (claim released for retry)`);
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} THREW for item ${itemId}: ${err.message} (claim lapses in 15m, will retry)`);
     return;
   }
 
-  if (result.sent) {
+  if (!result.sent) {
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} NOT SENT for item ${itemId}: ${result.reason} (claim lapses in 15m, will retry)`);
+    return;
+  }
+
+  // The text is out. Bookkeeping failures past this point are logged, never
+  // thrown: a 500 here makes Monday redeliver a webhook we have already acted
+  // on, and the provisional claim may lapse before that redelivery arrives.
+  try {
+    await confirmIntakeSms(itemId);
     await logNotification(itemId, INTAKE_SMS_STAGE, message);
     console.log(`[webhook] SMS: SENT → ${INTAKE_SMS_STAGE} (item ${itemId})`);
-  } else {
-    await releaseIntakeSmsClaim(itemId);
-    console.error(`[webhook] ${INTAKE_SMS_STAGE} NOT SENT for item ${itemId}: ${result.reason} (claim released for retry)`);
+  } catch (err) {
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} sent for item ${itemId} but bookkeeping failed: ${err.message}`);
   }
 }
 

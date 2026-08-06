@@ -165,25 +165,31 @@ async function getNotificationHistory(itemId) {
 // wide as the RingCentral round trip -- up to 15s -- and two overlapping Monday
 // deliveries would both pass the check and both text the patient. SET NX closes
 // that window: whoever creates the key owns the send.
-const INTAKE_CLAIM_TTL = 60 * 60 * 24 * 90; // matches notification history retention
+//
+// The claim is taken provisionally and only promoted once the provider confirms.
+// That is what makes the failure paths safe: an attempt that fails, throws, or
+// comes back ambiguous simply lets the short claim lapse. There is no delete to
+// fail, so no way to strand a patient behind a 90-day key and leave them with no
+// link at all. The cost is that an SMS which RingCentral accepted but reported
+// as failed can be re-sent once the window passes -- at-least-once, chosen
+// deliberately: a duplicate text is recoverable, a missing one is not.
+const INTAKE_CLAIM_PENDING_TTL = 15 * 60;              // unconfirmed attempt
+const INTAKE_CLAIM_CONFIRMED_TTL = 60 * 60 * 24 * 90;  // matches notification history retention
 
 async function claimIntakeSms(itemId) {
   const r = getRedis();
-  // No Redis means no de-duplication is possible. Send anyway -- a patient
-  // texted twice is recoverable; one who never receives their only link is not.
+  // No Redis means no de-duplication is possible. Send anyway -- same reasoning.
   if (!r) return true;
-  const res = await r.set(`intake_sms:${itemId}`, new Date().toISOString(), "EX", INTAKE_CLAIM_TTL, "NX");
+  const res = await r.set(`intake_sms:${itemId}`, "pending", "EX", INTAKE_CLAIM_PENDING_TTL, "NX");
   return res === "OK";
 }
 
-// Hand the claim back when a send fails, so a later delivery retries it.
-// Without this, one transient RingCentral error -- or simply
-// PRODUCTION_SMS_ENABLED being false -- permanently consumes the patient's
-// only notification and they go through all of intake with no link.
-async function releaseIntakeSmsClaim(itemId) {
+// Promote a confirmed send to the full retention window. Until this runs, the
+// claim is holding a slot for an attempt we cannot yet vouch for.
+async function confirmIntakeSms(itemId) {
   const r = getRedis();
   if (!r) return;
-  await r.del(`intake_sms:${itemId}`);
+  await r.set(`intake_sms:${itemId}`, new Date().toISOString(), "EX", INTAKE_CLAIM_CONFIRMED_TTL);
 }
 
 // ─── Health check ───
@@ -202,6 +208,6 @@ module.exports = {
   getRedis, cachePatientState, getPatientState,
   findPatientByPhoneCache, findPatientByUidCache, indexPhone, indexUid,
   logNotification, getNotificationHistory,
-  claimIntakeSms, releaseIntakeSmsClaim,
+  claimIntakeSms, confirmIntakeSms,
   redisHealthCheck
 };
