@@ -159,6 +159,33 @@ async function getNotificationHistory(itemId) {
   return entries.map(e => JSON.parse(e));
 }
 
+// ─── Intake SMS claim ───
+// The single-text model needs "have we sent this yet" and the send itself to be
+// atomic. Reading the notification history and then sending leaves a window as
+// wide as the RingCentral round trip -- up to 15s -- and two overlapping Monday
+// deliveries would both pass the check and both text the patient. SET NX closes
+// that window: whoever creates the key owns the send.
+const INTAKE_CLAIM_TTL = 60 * 60 * 24 * 90; // matches notification history retention
+
+async function claimIntakeSms(itemId) {
+  const r = getRedis();
+  // No Redis means no de-duplication is possible. Send anyway -- a patient
+  // texted twice is recoverable; one who never receives their only link is not.
+  if (!r) return true;
+  const res = await r.set(`intake_sms:${itemId}`, new Date().toISOString(), "EX", INTAKE_CLAIM_TTL, "NX");
+  return res === "OK";
+}
+
+// Hand the claim back when a send fails, so a later delivery retries it.
+// Without this, one transient RingCentral error -- or simply
+// PRODUCTION_SMS_ENABLED being false -- permanently consumes the patient's
+// only notification and they go through all of intake with no link.
+async function releaseIntakeSmsClaim(itemId) {
+  const r = getRedis();
+  if (!r) return;
+  await r.del(`intake_sms:${itemId}`);
+}
+
 // ─── Health check ───
 async function redisHealthCheck() {
   const r = getRedis();
@@ -175,5 +202,6 @@ module.exports = {
   getRedis, cachePatientState, getPatientState,
   findPatientByPhoneCache, findPatientByUidCache, indexPhone, indexUid,
   logNotification, getNotificationHistory,
+  claimIntakeSms, releaseIntakeSmsClaim,
   redisHealthCheck
 };

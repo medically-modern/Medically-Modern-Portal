@@ -5,7 +5,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
 const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, buildIntakeSms } = require("./config");
-const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, redisHealthCheck } = require("./redis");
+const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, releaseIntakeSmsClaim, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
 const fs = require("fs");
@@ -97,22 +97,56 @@ app.get("/health", async (req, res) => {
   });
 });
 
-// ─── Intake SMS de-duplication ───
-// "Exactly one text" only holds if 0B can't fire twice. Monday redelivers
-// webhooks, and the retroactive path fires whenever a UID read comes back
-// empty — under the old eight-text model a duplicate was noise, but now it
-// would be the second text a patient ever gets, telling someone halfway
-// through insurance that we've just received their referral.
-// Backed by the Redis notification log, so a cache wipe fails open and re-sends.
-// That is the safe direction: a patient texted twice is better off than one
-// who never receives their only link.
-async function alreadySentIntakeSms(itemId) {
+// ─── Intake SMS dispatch ───
+// The one text a patient ever receives. Both call sites below go through here,
+// so the ordering guarantees live in exactly one place.
+//
+// Two failure modes this has to survive, because there is no second text to
+// paper over either:
+//
+//   Sending twice — Monday redelivers webhooks, and the retroactive path fires
+//   whenever a UID read comes back empty. Under the old eight-text model a
+//   duplicate was noise; now it would be the second text a patient ever gets,
+//   telling someone halfway through insurance we just received their referral.
+//   The claim is taken with SET NX so overlapping deliveries cannot both pass.
+//
+//   Not sending at all — worse. The claim is released whenever the send fails,
+//   so a later delivery retries. Nothing is written to the notification history
+//   unless the message actually went out: that log gates nothing on its own now,
+//   but it is the audit trail, and recording an attempt as a delivery is how a
+//   patient ends up in the pipeline believing we texted them when we did not.
+async function sendIntakeSms(itemId, { phone, patientUid, patientName }) {
+  const message = buildIntakeSms(patientUid);
+  if (!message) {
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no patient UID, link would be dead`);
+    return;
+  }
+  if (!phone) {
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no phone number on record`);
+    return;
+  }
+
+  // Claim before sending, never after: the check and the send have to be atomic.
+  if (!(await claimIntakeSms(itemId))) {
+    console.log(`[webhook] ${INTAKE_SMS_STAGE} skipped for item ${itemId}: already claimed`);
+    return;
+  }
+
+  let result;
   try {
-    const history = await getNotificationHistory(itemId);
-    return history.some((entry) => entry.stage === INTAKE_SMS_STAGE);
+    result = await sendSMS(phone, message, { patientName });
   } catch (err) {
-    console.error(`[webhook] Could not read notification history for ${itemId}: ${err.message}`);
-    return false;
+    await releaseIntakeSmsClaim(itemId);
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} THREW for item ${itemId}: ${err.message} (claim released for retry)`);
+    return;
+  }
+
+  if (result.sent) {
+    await logNotification(itemId, INTAKE_SMS_STAGE, message);
+    console.log(`[webhook] SMS: SENT → ${INTAKE_SMS_STAGE} (item ${itemId})`);
+  } else {
+    await releaseIntakeSmsClaim(itemId);
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} NOT SENT for item ${itemId}: ${result.reason} (claim released for retry)`);
   }
 }
 
@@ -280,14 +314,7 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
         // the only way they ever receive their link.
         if (String(boardId) === BOARDS.MEDICAL_EVAL && patientStage.code !== INTAKE_SMS_STAGE) {
           console.log(`[webhook] Automation-created item detected on Medical Eval — sending retroactive ${INTAKE_SMS_STAGE} notification`);
-          const msg0B = buildIntakeSms(patientUid);
-          if (msg0B && phone && !(await alreadySentIntakeSms(itemId))) {
-            const sms0B = await sendSMS(phone, msg0B, { patientName });
-            await logNotification(itemId, INTAKE_SMS_STAGE, msg0B);
-            console.log(`[webhook] Retroactive ${INTAKE_SMS_STAGE} SMS: ${sms0B.sent ? "SENT" : sms0B.reason}`);
-          } else if (!msg0B) {
-            console.error(`[webhook] Retroactive ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no patient UID, link would be dead`);
-          }
+          await sendIntakeSms(itemId, { phone, patientUid, patientName });
         }
       }
 
@@ -318,16 +345,7 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
       // unconditionally, so the link stays current whether or not we text.
       // Widening this means adding stage codes to the check, nothing more.
       if (patientStage.code === INTAKE_SMS_STAGE) {
-        const fullMessage = buildIntakeSms(patientUid);
-        if (fullMessage && !(await alreadySentIntakeSms(itemId))) {
-          const smsResult = await sendSMS(phone, fullMessage, { patientName });
-          await logNotification(itemId, patientStage.code, fullMessage);
-          console.log(`[webhook] SMS: ${smsResult.sent ? "SENT" : smsResult.reason} → ${patientStage.code}`);
-        } else if (!fullMessage) {
-          console.error(`[webhook] SMS SUPPRESSED for item ${itemId}: no patient UID, link would be dead`);
-        } else {
-          console.log(`[webhook] SMS skipped → ${patientStage.code} already sent for item ${itemId}`);
-        }
+        await sendIntakeSms(itemId, { phone, patientUid, patientName });
       } else {
         console.log(`[webhook] Portal updated silently → ${patientStage.code} (single-text model)`);
       }
