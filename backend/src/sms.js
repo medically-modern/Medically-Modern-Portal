@@ -82,10 +82,12 @@ async function sendSMS(phone, message, { patientName = "" } = {}) {
       console.log(`[sms] SENT → ${toNumber} (${patientName}): "${message.substring(0, 60)}..." | ID: ${data.id}`);
       return { sent: true, messageId: data.id };
     } catch (err) {
-      const isAuthError = err.message?.includes("Refresh token") ||
-                          err.message?.includes("token") ||
-                          err.message?.includes("Unauthorized") ||
-                          err.message?.includes("401");
+      // RingCentral spells stale-session errors inconsistently ("Token not
+      // found", "Refresh token is missing") — match case-insensitively.
+      const errText = (err.message || "").toLowerCase();
+      const isAuthError = errText.includes("token") ||
+                          errText.includes("unauthorized") ||
+                          errText.includes("401");
 
       if (isAuthError && attempt === 0) {
         console.log(`[sms] Auth error, re-authenticating: ${err.message}`);
