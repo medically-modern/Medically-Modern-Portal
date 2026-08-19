@@ -16,6 +16,9 @@ const STAGE_COLUMNS = {
   [BOARDS.WELCOME_CALL]: "color_mm1ws96t"
 };
 
+// Referral Source (Medical Evaluation board) — gates the intake text below.
+const REFERRAL_SOURCE_COLUMN = "color_mm1w5wxr";
+
 // Phone column (same ID across all boards)
 const PHONE_COLUMN = "phone_mm1x44yk";
 const PHONE_COLUMN_SUBSCRIPTION = "phone_mkp0q3cw";
@@ -88,6 +91,23 @@ const MESSAGES = {
 // that the link is the channel, and earn a bookmark. Nothing else reaches them.
 const INTAKE_SMS_STAGE = "0B";
 
+// ...and only to patients who came to us directly. Every other referral reaches
+// us through someone the patient is already dealing with — their manufacturer,
+// their doctor's office, a payer — and those people do the telling. A cold text
+// from a company the patient never contacted reads as spam, which is a bad way
+// to spend the one message we get. Board labels on Referral Source are:
+// Patient | Tandem | Beta Bionics | CareCentrix | Doctor | Solace Advocates.
+const INTAKE_SMS_REFERRAL_SOURCE = "Patient";
+
+// Matches on the label text, not the status index. The index is a label id that
+// survives a reorder but not a delete-and-recreate, and the text is what anyone
+// looking at the board sees. An unset column returns "" and is not a match —
+// deliberately, since "anything but Patient" includes "not filled in yet".
+function isTextableReferralSource(referralSourceText) {
+  return String(referralSourceText || "").trim().toLowerCase()
+    === INTAKE_SMS_REFERRAL_SOURCE.toLowerCase();
+}
+
 // Returns null when there is no UID to build a link from. That is deliberate —
 // this text promises a link, and sending it without one spends the patient's
 // only notification on a dead end. Callers must treat null as "don't send".
@@ -113,6 +133,7 @@ const COMPLETED_GROUPS = {
 
 module.exports = {
   BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, PHONE_COLUMN, PHONE_COLUMN_SUBSCRIPTION, NAME_COLUMN, INTAKE_DATE_COLUMN,
-  PATIENT_UID_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS,
-  INTAKE_SMS_STAGE, buildIntakeSms
+  PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME,
+  MESSAGES, COMPLETED_GROUPS,
+  INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCE, isTextableReferralSource, buildIntakeSms
 };

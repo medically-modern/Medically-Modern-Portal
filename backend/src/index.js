@@ -4,7 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
-const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, buildIntakeSms } = require("./config");
+const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCE, isTextableReferralSource, buildIntakeSms } = require("./config");
 const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
@@ -110,8 +110,9 @@ async function alreadyDeliveredIntakeSms(itemId) {
 }
 
 // ─── Intake SMS dispatch ───
-// The one text a patient ever receives. Both call sites below go through here,
-// so the ordering guarantees live in exactly one place.
+// The one text a patient ever receives -- and only if they referred themselves;
+// see INTAKE_SMS_REFERRAL_SOURCE. Both call sites below go through here, so the
+// ordering guarantees live in exactly one place.
 //
 // Two failure modes this has to survive, because there is no second text to
 // paper over either:
@@ -135,7 +136,18 @@ async function alreadyDeliveredIntakeSms(itemId) {
 // went out. That log gates nothing now, but it is the audit trail, and recording
 // an attempt as a delivery is how a patient ends up looking texted when they
 // were not.
-async function sendIntakeSms(itemId, { phone, patientUid, patientName }) {
+async function sendIntakeSms(itemId, { phone, patientUid, patientName, referralSource }) {
+  // Checked before anything else, and before any Redis write: a referral that is
+  // not the patient's own is never texted, so it must not burn the claim either.
+  // An empty column is not a match, which matters more than it looks -- a value
+  // written a moment after create_item would otherwise suppress the text for
+  // good. It doesn't: nothing is claimed here, so the recovery path on the next
+  // Medical Eval stage change re-reads the column and sends then.
+  if (!isTextableReferralSource(referralSource)) {
+    console.log(`[webhook] ${INTAKE_SMS_STAGE} skipped for item ${itemId}: referral source is ${referralSource ? `"${referralSource}"` : "unset"}, not ${INTAKE_SMS_REFERRAL_SOURCE}`);
+    return;
+  }
+
   const message = buildIntakeSms(patientUid);
   if (!message) {
     console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no patient UID, link would be dead`);
@@ -333,6 +345,8 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
       const phoneCol = item?.column_values?.find(c => c.id === "phone_mm1x44yk");
       const intakeCol = item?.column_values?.find(c => c.id === "date_mm1wf43j");
       const uidCol = item?.column_values?.find(c => Object.values(PATIENT_UID_COLUMNS).includes(c.id));
+      const referralCol = item?.column_values?.find(c => c.id === REFERRAL_SOURCE_COLUMN);
+      const referralSource = referralCol?.text || "";
       const phone = phoneCol?.text || "";
       const patientName = item?.name || "";
       let patientUid = uidCol?.text || "";
@@ -376,12 +390,13 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
       console.log(`[webhook] Cached: ${patientStage.code} | Visible: ${patientStage.visible} | Tier: ${patientStage.tier}`);
 
       // ─── Notification dispatch — single-text model ───
-      // Exactly one SMS per patient, at 0B, carrying the tracking link. Every
-      // later stage updates the portal silently: cachePatientState above runs
-      // unconditionally, so the link stays current whether or not we text.
-      // Widening this means adding stage codes to the check, nothing more.
+      // At most one SMS per patient, at 0B, carrying the tracking link -- and
+      // only for patient-sourced referrals. Every later stage updates the portal
+      // silently: cachePatientState above runs unconditionally, so a patient we
+      // never text still has a live tracker the moment someone sends them the
+      // link. Widening this means adding stage codes to the check, nothing more.
       if (patientStage.code === INTAKE_SMS_STAGE) {
-        await sendIntakeSms(itemId, { phone, patientUid, patientName });
+        await sendIntakeSms(itemId, { phone, patientUid, patientName, referralSource });
       } else {
         console.log(`[webhook] Portal updated silently → ${patientStage.code} (single-text model)`);
 
@@ -397,7 +412,7 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
         // recovery attempt there would read as a fresh referral to someone whose
         // authorization is already in flight.
         if (String(boardId) === BOARDS.MEDICAL_EVAL) {
-          await sendIntakeSms(itemId, { phone, patientUid, patientName });
+          await sendIntakeSms(itemId, { phone, patientUid, patientName, referralSource });
         }
       }
 
