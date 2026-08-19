@@ -34,16 +34,14 @@ const PATIENT_UID_COLUMNS = {
 };
 
 // Columns the doctor's script is filled from (Medical Evaluation board).
-// Fill rates across a 150-item sample: DOB 150, Doctor Name 150, NPI 146 — good
-// enough to print the physician block, which the intake form's copy cannot do
-// (it collects a free-text provider name and no NPI). Where a value is missing
-// pdf.js rules a line instead, so a thin record degrades on its own.
+// Patient and device only: this board also holds a Doctor Name and NPI, but the
+// script goes out with the physician block blank for the prescriber to complete
+// — see script.js. Where a value is missing pdf.js rules a line, so a thin
+// record degrades on its own.
 const SCRIPT_COLUMNS = {
-  dob:        "text_mm1xvxst",
-  cgmType:    "color_mm1w7pmf",
-  pumpType:   "color_mm1wjjtk",
-  doctorName: "text_mm1x46et",
-  doctorNpi:  "text_mm1x7d91"
+  dob:      "text_mm1xvxst",
+  cgmType:  "color_mm1w7pmf",
+  pumpType: "color_mm1wjjtk"
 };
 
 // Both device columns carry this label when we are not serving that device. It

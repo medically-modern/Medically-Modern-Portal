@@ -6,9 +6,13 @@
 // was submitted. It is generated here instead because the intake form and the
 // tracker are different monday items on different boards -- the form writes to
 // Profile Send Off, the patient is re-created on Medical Evaluation about half
-// an hour later, and nothing carries a file across. Building it from the
-// tracker's own board is also what lets the physician block be filled: the
-// intake form only ever had a free-text provider name.
+// an hour later, and nothing carries a file across.
+//
+// The physician block is left blank even though this board carries a doctor name
+// and NPI for nearly every patient. This document is handed to whoever actually
+// writes the prescription, and that is not always the doctor on our record --
+// printing a name and NPI the prescriber did not put there makes the page look
+// signed-off when nobody has signed it. pdf.js rules a line instead.
 //
 // Nothing here reaches monday or the filesystem beyond the cached templates, so
 // it is safe to call on any request path.
@@ -38,8 +42,6 @@ function readScriptFields(item) {
     dob:         columnText(item, SCRIPT_COLUMNS.dob),
     cgmType:     columnText(item, SCRIPT_COLUMNS.cgmType),
     pumpType:    columnText(item, SCRIPT_COLUMNS.pumpType),
-    doctorName:  columnText(item, SCRIPT_COLUMNS.doctorName),
-    doctorNpi:   columnText(item, SCRIPT_COLUMNS.doctorNpi),
     referralSource: columnText(item, REFERRAL_SOURCE_COLUMN)
   };
 }
@@ -85,8 +87,9 @@ async function buildScriptPdf(kind, fields) {
     dob: fields.dob,
     cgmType: fields.cgmType,
     pumpType: fields.pumpType,
-    doctorName: fields.doctorName,
-    doctorNpi: fields.doctorNpi
+    // Blank on purpose -- the prescriber fills and signs these. See the header.
+    doctorName: "",
+    doctorNpi: ""
   });
 }
 
