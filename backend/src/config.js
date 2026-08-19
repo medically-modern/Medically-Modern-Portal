@@ -41,7 +41,9 @@ const STAGE_MAP = {
   [`${BOARDS.MEDICAL_EVAL}:15`]: { id: "stuck_medical",      phase: 1, label: "Under Review",                 visible: false, tier: 3 },
 
   // Insurance board
-  [`${BOARDS.INSURANCE}:3`]:  { id: "benefits_sos",      phase: 2, label: "Verifying Your Benefits",       visible: false, tier: 3, code: "2A" },
+  // Portal-visible, but tier 3 so it stays silent if the retained multi-text
+  // model is ever restored — this stage informs, it does not warrant a text.
+  [`${BOARDS.INSURANCE}:3`]:  { id: "benefits_sos",      phase: 2, label: "Verifying Your Benefits",       visible: true,  tier: 3, code: "2A" },
   [`${BOARDS.INSURANCE}:4`]:  { id: "submit_auth",       phase: 2, label: "Submitting Authorization",      visible: false, tier: 3, code: "2B" },
   [`${BOARDS.INSURANCE}:6`]:  { id: "auth_outstanding",  phase: 2, label: "Authorization Pending",         visible: true,  tier: 1, code: "2C" },
   [`${BOARDS.INSURANCE}:0`]:  { id: "auth_denied",       phase: 2, label: "Additional Info Requested",     visible: true,  tier: 2, code: "2D", condition: "always_plus_call" },
@@ -68,6 +70,7 @@ const MESSAGES = {
   send_request: "We're coordinating with your doctor's office to gather the medical documentation needed for your equipment.",
   chase_clinicals: "We're actively following up with your doctor's office to obtain your medical records. This step can sometimes take a few days.",
   medical_complete: "Great news — your medical records have been reviewed and approved. We're now moving to the insurance verification step.",
+  benefits_sos: "We're verifying your insurance benefits and confirming what your plan covers. This is the first step before we submit your authorization request.",
   auth_outstanding: "Your prior authorization has been submitted to your insurance company. We're waiting on their decision — this typically takes 5–10 business days.",
   auth_denied: "Your insurance has requested additional information before approving your equipment. Our team is working on next steps and will be in touch.",
   insurance_complete: "Your insurance has approved your equipment. We're almost there!",

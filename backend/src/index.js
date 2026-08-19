@@ -587,13 +587,17 @@ app.get("/api/debug/cache/:itemId", requireDebugKey, async (req, res) => {
 
 
 // ─── OG Preview Images (pre-generated on startup — one PNG per stage) ───
-const OG_STAGE_ORDER = ["0B","1B","1D","1E","2C","2D","2E","3A","3C"];
-const NON_VISIBLE_MAP = { "1A": 0, "1C": 2, "2A": 4, "2B": 4, "3B": 8 };
+const OG_STAGE_ORDER = ["0B","1B","1D","1E","2A","2C","2D","2E","3A","3C"];
+const NON_VISIBLE_MAP = { "1A": 0, "1C": 2, "2B": 5, "3B": 9 };
+const STAGE_COUNT = OG_STAGE_ORDER.length;
+// Index of the last stage in each phase — where the separators are drawn.
+const PHASE_END_IDX = [3, 7];
 const ogImageCache = {}; // stage index → PNG buffer
 
 function buildOgSvg(activeIdx) {
   const W = 1200, H = 630;
-  const dotR = 16, dotSpacing = 105, dotStartX = 145, dotY = 340;
+  const dotR = 16, dotSpacing = 105, dotY = 340;
+  const dotStartX = Math.round((W - (STAGE_COUNT - 1) * dotSpacing) / 2);
 
   let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
   // Gradient background
@@ -606,7 +610,7 @@ function buildOgSvg(activeIdx) {
   svg += `<circle cx="120" cy="560" r="150" fill="rgba(255,255,255,0.03)"/>`;
 
   // Progress dots
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < STAGE_COUNT; i++) {
     const cx = dotStartX + i * dotSpacing;
     const done = i < activeIdx;
     const active = i === activeIdx;
@@ -631,22 +635,23 @@ function buildOgSvg(activeIdx) {
   }
 
   // Phase separators
-  svg += `<rect x="${dotStartX + 3*dotSpacing + dotR + 20}" y="${dotY-30}" width="2" height="60" rx="1" fill="rgba(255,255,255,0.15)"/>`;
-  svg += `<rect x="${dotStartX + 6*dotSpacing + dotR + 20}" y="${dotY-30}" width="2" height="60" rx="1" fill="rgba(255,255,255,0.15)"/>`;
+  for (const endIdx of PHASE_END_IDX) {
+    svg += `<rect x="${dotStartX + endIdx*dotSpacing + dotR + 20}" y="${dotY-30}" width="2" height="60" rx="1" fill="rgba(255,255,255,0.15)"/>`;
+  }
 
   // Progress bar
   const barW = W - 160;
   svg += `<rect x="80" y="${H-60}" width="${barW}" height="8" rx="4" fill="rgba(255,255,255,0.15)"/>`;
-  svg += `<rect x="80" y="${H-60}" width="${Math.round(barW * ((activeIdx+1)/9))}" height="8" rx="4" fill="#4ADE80"/>`;
+  svg += `<rect x="80" y="${H-60}" width="${Math.round(barW * ((activeIdx+1)/STAGE_COUNT))}" height="8" rx="4" fill="#4ADE80"/>`;
 
   svg += `</svg>`;
   return Buffer.from(svg);
 }
 
-// Pre-generate all 9 stage images + 1 default on startup
+// Pre-generate one image per stage + 1 default on startup
 async function preGenerateOgImages() {
   try {
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < STAGE_COUNT; i++) {
       const svgBuf = buildOgSvg(i);
       ogImageCache[i] = await sharp(svgBuf).png().toBuffer();
       console.log(`[og-image] Pre-generated stage ${i} (${OG_STAGE_ORDER[i]}): ${ogImageCache[i].length} bytes`);
@@ -655,7 +660,7 @@ async function preGenerateOgImages() {
     const defaultSvg = buildOgSvg(-1);
     ogImageCache[-1] = await sharp(defaultSvg).png().toBuffer();
     console.log(`[og-image] Pre-generated default: ${ogImageCache[-1].length} bytes`);
-    console.log("[og-image] All 10 images ready");
+    console.log(`[og-image] All ${STAGE_COUNT + 1} images ready`);
   } catch (err) {
     console.error("[og-image] Pre-generation failed:", err.message);
   }
@@ -735,14 +740,12 @@ app.get("/portal", async (req, res) => {
         const phase = parseInt(patient.phase || "0");
         
         // Count progress
-        const allStages = 9; // total visible stages
-        const stageOrder = ["0B","1B","1D","1E","2C","2D","2E","3A","3C"];
+        const allStages = STAGE_COUNT; // total visible stages
         const code = patient.stage_code || "0B";
-        let stageIdx = stageOrder.indexOf(code);
+        let stageIdx = OG_STAGE_ORDER.indexOf(code);
         if (stageIdx === -1) {
           // Non-visible stage, approximate
-          const mapping = { "1A": 0, "1C": 2, "2A": 4, "2B": 4, "3B": 8 };
-          stageIdx = mapping[code] ?? 0;
+          stageIdx = NON_VISIBLE_MAP[code] ?? 0;
         }
         const stepNum = stageIdx + 1;
         

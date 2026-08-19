@@ -581,6 +581,7 @@
         number: 2,
         title: "Insurance Verification",
         stages: [
+          { code: "2A", label: "Verifying Your Benefits", desc: "Confirming your insurance benefits and what your plan covers." },
           { code: "2C", label: "Authorization Pending", desc: "Prior authorization submitted to your insurance company." },
           { code: "2D", label: "Additional Info Requested", desc: "Your insurance requested more information before approval." },
           { code: "2E", label: "Insurance Approved", desc: "Your insurance has approved coverage for your equipment." }
@@ -601,7 +602,7 @@
     function getStageIndex(code) {
       const idx = ALL_CODES.indexOf(code);
       if (idx !== -1) return idx;
-      const mapping = { '1A': 0, '1C': 2, '2A': 4, '2B': 4, '3B': 8 };
+      const mapping = { '1A': 0, '1C': 2, '2B': 5, '3B': 9 };
       return mapping[code] ?? 0;
     }
 
