@@ -46,10 +46,38 @@ async function cachePatientState(itemId, state) {
     patient_uid: state.patientUid || ""
   };
 
+  // Written only when the caller actually resolved them. Absent is not the same
+  // as empty here: "" means "we looked, this patient gets no script", while a
+  // missing field means "nobody has looked yet" and sends the status route to
+  // monday. Defaulting a failed lookup to "" would cache that failure as an
+  // answer and hide the card for good.
+  if (Array.isArray(state.scriptKinds)) {
+    data.script_kinds = state.scriptKinds.join(",");
+    data.referral_source = state.referralSource || "";
+  }
+
   await r.hmset(key, data);
   // Expire after 30 days (patients rarely take longer)
   await r.expire(key, 60 * 60 * 24 * 30);
   return data;
+}
+
+// Back-fills the script fields on an entry written before they existed, so the
+// Monday lookup that computed them happens once per patient rather than once per
+// page load. Deliberately narrow: it must not disturb the stage fields, which
+// the webhook owns.
+async function cachePatientScripts(itemId, { scriptKinds, referralSource }) {
+  const r = getRedis();
+  if (!r) return null;
+
+  const key = `patient:${itemId}`;
+  if (!(await r.exists(key))) return null;
+
+  await r.hmset(key, {
+    referral_source: referralSource || "",
+    script_kinds: Array.isArray(scriptKinds) ? scriptKinds.join(",") : ""
+  });
+  return true;
 }
 
 async function getPatientState(itemId) {
@@ -205,7 +233,7 @@ async function redisHealthCheck() {
 }
 
 module.exports = {
-  getRedis, cachePatientState, getPatientState,
+  getRedis, cachePatientState, cachePatientScripts, getPatientState,
   findPatientByPhoneCache, findPatientByUidCache, indexPhone, indexUid,
   logNotification, getNotificationHistory,
   claimIntakeSms, confirmIntakeSms,

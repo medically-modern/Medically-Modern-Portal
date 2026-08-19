@@ -4,8 +4,9 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
-const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCE, isTextableReferralSource, buildIntakeSms } = require("./config");
-const { cachePatientState, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
+const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_MAX_PHASE, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCE, isTextableReferralSource, buildIntakeSms } = require("./config");
+const { KINDS: SCRIPT_KINDS, readScriptFields, scriptKindsFor, scriptsAreOffered, scriptFilename, scriptsPayload, buildScriptPdf } = require("./script");
+const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
 const fs = require("fs");
@@ -380,7 +381,12 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
         visible: patientStage.visible,
         message: MESSAGES[patientStage.id] || "",
         intakeDate: intakeCol?.text || "",
-        patientUid
+        patientUid,
+        referralSource,
+        // Recomputed on every stage change, so a device corrected on the board
+        // shows up on the tracker without anyone clearing a cache. Left undefined
+        // when the item didn't load, so a failed fetch is not cached as an answer.
+        scriptKinds: item ? scriptKindsFor(readScriptFields(item)) : undefined
       });
 
       // Index phone and UID for fast lookups
@@ -452,6 +458,32 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
   }
 });
 
+// ─── Which scripts to advertise on the tracker ───
+// Reads the cache when it can. An entry written before scripts existed has no
+// script fields at all, so it costs one monday lookup, once, and is back-filled.
+// Every failure returns [] -- no card at all beats a card whose download 404s.
+async function resolveScripts(itemId, cached) {
+  // Cheapest exit, and it needs nothing from monday: past medical review there
+  // is no card whatever else is true.
+  if (Number(cached.phase || 0) > SCRIPT_MAX_PHASE) return [];
+
+  if (cached.script_kinds !== undefined) {
+    if (!scriptsAreOffered({ referralSource: cached.referral_source, phase: cached.phase })) return [];
+    return scriptsPayload(cached.script_kinds ? cached.script_kinds.split(",") : []);
+  }
+
+  try {
+    const fields = readScriptFields(await getItem(itemId));
+    const kinds = scriptKindsFor(fields);
+    await cachePatientScripts(itemId, { scriptKinds: kinds, referralSource: fields.referralSource });
+    if (!scriptsAreOffered({ referralSource: fields.referralSource, phase: cached.phase })) return [];
+    return scriptsPayload(kinds);
+  } catch (err) {
+    console.error(`[status] script lookup failed for item ${itemId}: ${err.message}`);
+    return [];
+  }
+}
+
 // ─── [#3] Phone lookup endpoint REMOVED — was unauthenticated, allowed enumeration ───
 // The portal frontend uses UID-based lookup only. Phone lookup is no longer exposed.
 
@@ -482,6 +514,7 @@ app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
           visible: cached.visible === "true",
           message: cached.message
         },
+        scripts: await resolveScripts(cached.item_id, cached),
         intakeDate: cached.intake_date || null,
         lastUpdated: cached.stage_updated_at
       });
@@ -517,6 +550,22 @@ app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
     const intakeCol = patient.column_values.find(c => c.id === "date_mm1wf43j");
     const phoneCol = patient.column_values.find(c => c.id === "phone_mm1x44yk");
 
+    // findPatientByUid asks only for the columns it matches on, so the script
+    // fields need their own fetch. This is the cache-miss path -- it has already
+    // scanned up to four boards -- so one more call is not what costs here. Left
+    // null on any other board: the script columns only exist on Medical Eval, and
+    // a patient who has moved past it is past being offered one anyway.
+    let scriptFields = null;
+    let monEvalKinds = null;
+    if (currentStage && String(patient.boardId) === BOARDS.MEDICAL_EVAL) {
+      try {
+        scriptFields = readScriptFields(await getItem(patient.id));
+        monEvalKinds = scriptKindsFor(scriptFields);
+      } catch (err) {
+        console.error(`[status/uid] script lookup failed for item ${patient.id}: ${err.message}`);
+      }
+    }
+
     // Hydrate cache
     if (currentStage) {
       await cachePatientState(patient.id, {
@@ -530,7 +579,9 @@ app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
         visible: currentStage.visible,
         message: MESSAGES[currentStage.id] || "",
         intakeDate: intakeCol?.text || "",
-        patientUid: uid
+        patientUid: uid,
+        referralSource: scriptFields?.referralSource,
+        scriptKinds: monEvalKinds
       });
       if (phoneCol?.text) await indexPhone(phoneCol.text, patient.id);
       await indexUid(uid, patient.id);
@@ -548,11 +599,88 @@ app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
         visible: currentStage.visible,
         message: MESSAGES[currentStage.id]
       } : null,
+      scripts: (currentStage && monEvalKinds && scriptsAreOffered({ referralSource: scriptFields.referralSource, phase: currentStage.phase }))
+        ? scriptsPayload(monEvalKinds)
+        : [],
       intakeDate: intakeCol?.text || null,
       lastUpdated: new Date().toISOString()
     });
   } catch (err) {
     console.error("[status/uid] Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── The doctor's script (PDF) ───
+// Built per request rather than stored. Filling a cached template is cheap, and
+// a doctor or device corrected on the board should produce a corrected document
+// rather than whichever one we happened to save first.
+//
+// Guarded exactly like /api/status/uid: the UID is the only credential the
+// tracker has, and this response carries more than the status does -- name, date
+// of birth, prescriber. Hence no-store, and the same rate limiter.
+app.get("/api/script/:uid/:kind", statusLimiter, async (req, res) => {
+  try {
+    const { uid, kind } = req.params;
+
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(uid)) {
+      return res.status(400).json({ error: "Invalid patient identifier" });
+    }
+    if (!SCRIPT_KINDS[kind]) {
+      return res.status(404).json({ error: "Unknown script" });
+    }
+
+    // Cache first for the item id, then monday. Either way the columns come from
+    // a fresh getItem: the cache holds a stage, not a prescription.
+    const cached = await findPatientByUidCache(uid);
+    let itemId = cached?.item_id;
+    let phase = cached?.phase;
+
+    if (!itemId) {
+      const patient = await findPatientByUid(uid);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      itemId = patient.id;
+
+      const stageCol = patient.column_values.find(c => c.id === "color_mm1wyr92" || c.id === "color_mm1ws96t");
+      let stage = null;
+      if (stageCol?.value) {
+        try {
+          stage = STAGE_MAP[`${patient.boardId}:${JSON.parse(stageCol.value).index}`];
+        } catch (e) { /* unparseable stage — treated as the start of the pipeline */ }
+      }
+      if (!stage && String(patient.boardId) === BOARDS.MEDICAL_EVAL) stage = REFERRAL_RECEIVED;
+      phase = stage?.phase;
+    }
+
+    const item = await getItem(itemId);
+    if (!item) return res.status(404).json({ error: "Patient not found" });
+
+    const fields = readScriptFields(item);
+
+    // The same two rules the card is drawn by, re-checked here. The card being
+    // hidden is a rendering decision; this is the one that actually holds, since
+    // a link that worked yesterday is still in somebody's downloads today.
+    if (!scriptsAreOffered({ referralSource: fields.referralSource, phase })) {
+      return res.status(404).json({ error: "No script available" });
+    }
+    if (!scriptKindsFor(fields).includes(kind)) {
+      return res.status(404).json({ error: "No script available" });
+    }
+
+    const bytes = await buildScriptPdf(kind, fields);
+    const filename = scriptFilename(kind, fields.patientName);
+
+    // attachment, not inline: the tracker is served from a different origin than
+    // this API, and a cross-origin <a download> is ignored by browsers. The
+    // header is what actually makes the link save a file.
+    res.set("Content-Type", "application/pdf");
+    res.set("Content-Disposition", `attachment; filename="${filename}"`);
+    res.set("Cache-Control", "no-store");
+    res.send(Buffer.from(bytes));
+    console.log(`[script] served ${kind} for item ${itemId} (${bytes.length} bytes)`);
+  } catch (err) {
+    console.error("[script] Error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

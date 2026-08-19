@@ -33,6 +33,30 @@ const PATIENT_UID_COLUMNS = {
   [BOARDS.SUBSCRIPTION]: "text_mm3af3zt"
 };
 
+// Columns the doctor's script is filled from (Medical Evaluation board).
+// Fill rates across a 150-item sample: DOB 150, Doctor Name 150, NPI 146 — good
+// enough to print the physician block, which the intake form's copy cannot do
+// (it collects a free-text provider name and no NPI). Where a value is missing
+// pdf.js rules a line instead, so a thin record degrades on its own.
+const SCRIPT_COLUMNS = {
+  dob:        "text_mm1xvxst",
+  cgmType:    "color_mm1w7pmf",
+  pumpType:   "color_mm1wjjtk",
+  doctorName: "text_mm1x46et",
+  doctorNpi:  "text_mm1x7d91"
+};
+
+// Both device columns carry this label when we are not serving that device. It
+// is the "no script of this kind" signal — more reliable than Request Type,
+// which says "Supplies Only" for patients who do have a pump on record.
+const DEVICE_NOT_SERVED = "Not Serving";
+
+// The script is a nudge to get clinicals moving, so it lives on the tracker only
+// while that is still the open question. Phase 2 is insurance: by then the
+// records are in and "send this to your doctor" is an instruction to do
+// something we no longer need, which reads as a step they missed.
+const SCRIPT_MAX_PHASE = 1;
+
 // Map Monday.com (board + stage value index) → patient-facing stage
 const STAGE_MAP = {
   // Medical Evaluation board
@@ -133,7 +157,8 @@ const COMPLETED_GROUPS = {
 
 module.exports = {
   BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, PHONE_COLUMN, PHONE_COLUMN_SUBSCRIPTION, NAME_COLUMN, INTAKE_DATE_COLUMN,
-  PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME,
+  PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_COLUMNS, DEVICE_NOT_SERVED, SCRIPT_MAX_PHASE,
+  STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME,
   MESSAGES, COMPLETED_GROUPS,
   INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCE, isTextableReferralSource, buildIntakeSms
 };

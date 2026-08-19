@@ -280,6 +280,54 @@
       color: var(--text-secondary);
     }
 
+    /* ─── Doctor's Script ─── */
+    .script-card {
+      display: none;
+      background: var(--primary-light);
+      border: 1px solid var(--primary-mid);
+      border-radius: var(--radius);
+      padding: 1.15rem 1.25rem;
+      margin-top: 0.75rem;
+    }
+    .script-card.visible { display: block; }
+    .script-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
+    }
+    .script-card-header svg { width: 16px; height: 16px; color: var(--primary); flex-shrink: 0; }
+    .script-card-header span {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .script-text {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      margin-bottom: 0.9rem;
+    }
+    .script-links { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .script-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      background: var(--primary);
+      color: #FFFFFF;
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.6rem 1rem;
+      border-radius: var(--radius-sm);
+      transition: background 0.15s ease;
+    }
+    .script-link:hover { background: var(--primary-dark); }
+    .script-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .script-link svg { width: 15px; height: 15px; flex-shrink: 0; }
+
     /* ─── Phase Sections ─── */
     .roadmap-label {
       font-size: 0.72rem;
@@ -558,6 +606,20 @@
         <div class="message-text" id="current-message"></div>
       </div>
 
+      <div class="script-card" id="script-card">
+        <div class="script-card-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <path d="M14 2v6h6"/>
+            <line x1="9" y1="14" x2="15" y2="14"/>
+            <line x1="9" y1="18" x2="13" y2="18"/>
+          </svg>
+          <span>Your Script</span>
+        </div>
+        <div class="script-text">If you want to help speed things along, feel free to send this script to your doctor directly.</div>
+        <div class="script-links" id="script-links"></div>
+      </div>
+
       <div class="roadmap-label">Your Roadmap</div>
       <div id="roadmap"></div>
 
@@ -617,10 +679,15 @@
     const checkIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5L6.5 11L12.5 5.5"/></svg>';
     const currentDot = '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="3"/></svg>';
     const emptyCircle = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="4.5"/></svg>';
+    const downloadIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
     const phaseCheck = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
+
+    // Held for the script download links, which are built per patient.
+    let currentUid = null;
 
     async function init() {
       const uid = new URLSearchParams(window.location.search).get('p');
+      currentUid = uid;
       if (uid) {
         document.getElementById('login-view').style.display = 'none';
         document.getElementById('loading-view').style.display = 'block';
@@ -692,6 +759,26 @@
         }
       }
       document.getElementById('current-message').textContent = message || 'Your case is being processed.';
+
+      // The doctor's script, when the backend says this patient has one. It
+      // decides — referral source and how far along they are — so an empty or
+      // missing array here means no card, not a card with nothing in it.
+      const scriptCard = document.getElementById('script-card');
+      const scriptLinks = document.getElementById('script-links');
+      const scripts = Array.isArray(data.scripts) ? data.scripts : [];
+      scriptLinks.innerHTML = '';
+      if (scripts.length && currentUid) {
+        scripts.forEach(s => {
+          const a = document.createElement('a');
+          a.className = 'script-link';
+          a.href = `${API_BASE}/api/script/${encodeURIComponent(currentUid)}/${encodeURIComponent(s.kind)}`;
+          a.innerHTML = `${downloadIcon}<span>Download ${scripts.length > 1 ? s.label : 'your script'}</span>`;
+          scriptLinks.appendChild(a);
+        });
+        scriptCard.classList.add('visible');
+      } else {
+        scriptCard.classList.remove('visible');
+      }
 
       // Build roadmap
       const roadmap = document.getElementById('roadmap');
