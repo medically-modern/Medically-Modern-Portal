@@ -6,7 +6,7 @@ const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
 const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_MAX_PHASE, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCES, isTextableReferralSource, buildIntakeSms, manualIntakeSendDate } = require("./config");
 const { KINDS: SCRIPT_KINDS, readScriptFields, scriptKindsFor, scriptsAreOffered, scriptFilename, scriptsPayload, buildScriptPdf } = require("./script");
-const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
+const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, getUidIndex, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
 
 const fs = require("fs");
@@ -520,6 +520,14 @@ async function resolveScripts(itemId, cached) {
 // ─── [#3] Phone lookup endpoint REMOVED — was unauthenticated, allowed enumeration ───
 // The portal frontend uses UID-based lookup only. Phone lookup is no longer exposed.
 
+// Every monday lookup for a portal UID goes through here so the uid index is
+// always offered as the hint -- findPatientByUid explains why that is the
+// difference between one fetch and four.
+async function lookupPatientByUid(uid) {
+  const itemIdHint = await getUidIndex(uid);
+  return findPatientByUid(uid, { itemIdHint });
+}
+
 // ─── [#4, #7] Patient status by UID (portal link: ?p={patient_uid}) ───
 // Rate limited + response minimized to only what the frontend needs
 app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
@@ -555,7 +563,7 @@ app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
 
     // Cache miss — search Monday.com boards for this UID
     console.log(`[status] UID cache MISS for ${uid}, querying Monday.com`);
-    const patient = await findPatientByUid(uid);
+    const patient = await lookupPatientByUid(uid);
 
     if (!patient) {
       return res.status(404).json({ error: "Patient not found" });
@@ -583,16 +591,14 @@ app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
     const intakeCol = patient.column_values.find(c => c.id === "date_mm1wf43j");
     const phoneCol = patient.column_values.find(c => c.id === "phone_mm1x44yk");
 
-    // findPatientByUid asks only for the columns it matches on, so the script
-    // fields need their own fetch. This is the cache-miss path -- it has already
-    // scanned up to four boards -- so one more call is not what costs here. Left
-    // null on any other board: the script columns only exist on Medical Eval, and
-    // a patient who has moved past it is past being offered one anyway.
+    // The lookup returns every column, so the script fields are already here.
+    // Left null on any other board: the script columns only exist on Medical
+    // Eval, and a patient who has moved past it is past being offered one anyway.
     let scriptFields = null;
     let monEvalKinds = null;
     if (currentStage && String(patient.boardId) === BOARDS.MEDICAL_EVAL) {
       try {
-        scriptFields = readScriptFields(await getItem(patient.id));
+        scriptFields = readScriptFields(patient);
         monEvalKinds = scriptKindsFor(scriptFields);
       } catch (err) {
         console.error(`[status/uid] script lookup failed for item ${patient.id}: ${err.message}`);
@@ -664,29 +670,31 @@ app.get("/api/script/:uid/:kind", statusLimiter, async (req, res) => {
       return res.status(404).json({ error: "Unknown script" });
     }
 
-    // Cache first for the item id, then monday. Either way the columns come from
-    // a fresh getItem: the cache holds a stage, not a prescription.
+    // Cache first for the item id, then monday. Either way the columns come
+    // fresh -- the cache holds a stage, not a prescription -- and a miss hands
+    // back the whole item, so it is not fetched twice.
     const cached = await findPatientByUidCache(uid);
     let itemId = cached?.item_id;
     let phase = cached?.phase;
+    let found = null;
 
     if (!itemId) {
-      const patient = await findPatientByUid(uid);
-      if (!patient) return res.status(404).json({ error: "Patient not found" });
-      itemId = patient.id;
+      found = await lookupPatientByUid(uid);
+      if (!found) return res.status(404).json({ error: "Patient not found" });
+      itemId = found.id;
 
-      const stageCol = patient.column_values.find(c => c.id === "color_mm1wyr92" || c.id === "color_mm1ws96t");
+      const stageCol = found.column_values.find(c => c.id === "color_mm1wyr92" || c.id === "color_mm1ws96t");
       let stage = null;
       if (stageCol?.value) {
         try {
-          stage = STAGE_MAP[`${patient.boardId}:${JSON.parse(stageCol.value).index}`];
+          stage = STAGE_MAP[`${found.boardId}:${JSON.parse(stageCol.value).index}`];
         } catch (e) { /* unparseable stage — treated as the start of the pipeline */ }
       }
-      if (!stage && String(patient.boardId) === BOARDS.MEDICAL_EVAL) stage = REFERRAL_RECEIVED;
+      if (!stage && String(found.boardId) === BOARDS.MEDICAL_EVAL) stage = REFERRAL_RECEIVED;
       phase = stage?.phase;
     }
 
-    const item = await getItem(itemId);
+    const item = found || await getItem(itemId);
     if (!item) return res.status(404).json({ error: "Patient not found" });
 
     const fields = readScriptFields(item);
@@ -901,7 +909,7 @@ app.get("/portal", async (req, res) => {
       // Try cache first, then Monday
       let patient = await findPatientByUidCache(uid);
       if (!patient) {
-        const mondayPatient = await findPatientByUid(uid);
+        const mondayPatient = await lookupPatientByUid(uid);
         if (mondayPatient) {
           const stageCol = mondayPatient.column_values.find(c =>
             c.id === "color_mm1wyr92" || c.id === "color_mm1ws96t"

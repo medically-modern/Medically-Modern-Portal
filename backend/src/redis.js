@@ -137,12 +137,18 @@ async function indexPhone(phone, itemId) {
 
 
 
-// Find patient by UID in Redis (fast lookup for portal links)
-async function findPatientByUidCache(uid) {
+// The item id the uid index holds, with or without cached state behind it. The
+// index lives 90 days and the state 30, so this is what makes an expired cache
+// cheap to recover from: see findPatientByUid in monday.js.
+async function getUidIndex(uid) {
   const r = getRedis();
   if (!r) return null;
+  return r.get(`uid:${uid}`);
+}
 
-  const itemId = await r.get(`uid:${uid}`);
+// Find patient by UID in Redis (fast lookup for portal links)
+async function findPatientByUidCache(uid) {
+  const itemId = await getUidIndex(uid);
   if (!itemId) return null;
   return getPatientState(itemId);
 }
@@ -234,7 +240,7 @@ async function redisHealthCheck() {
 
 module.exports = {
   getRedis, cachePatientState, cachePatientScripts, getPatientState,
-  findPatientByPhoneCache, findPatientByUidCache, indexPhone, indexUid,
+  findPatientByPhoneCache, findPatientByUidCache, getUidIndex, indexPhone, indexUid,
   logNotification, getNotificationHistory,
   claimIntakeSms, confirmIntakeSms,
   redisHealthCheck

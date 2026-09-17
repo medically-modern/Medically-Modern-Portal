@@ -23,6 +23,17 @@ function validateGroupId(id) {
   return str;
 }
 
+// Portal UIDs are v4 UUIDs, and findPatientByUid interpolates one into a query.
+// Same posture as the validators above: reject anything else before it gets
+// near a query string.
+function validateUid(uid) {
+  const str = String(uid);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)) {
+    throw new Error(`Invalid patient UID: must be a UUID, got "${str}"`);
+  }
+  return str;
+}
+
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
 const API_URL = "https://api.monday.com/v2";
 
@@ -148,11 +159,41 @@ async function moveItemToGroup(boardId, itemId, groupId) {
   return data.move_item_to_group;
 }
 
-// Find patient by UID across pipeline boards
-async function findPatientByUid(uid) {
+// The patient's item for a portal UID. Two paths, cheapest first.
+//
+// The uid index in Redis outlives the cached state -- 90 days against 30 -- so
+// on most cache misses the item id is still known. Callers pass it as a hint:
+// one fetch by id, with the UID column checked before it is trusted, since an
+// index can point at an item that was since deleted or re-created. Failing
+// that, each board is asked for the item whose UID column equals this value,
+// which is an indexed lookup on monday's side at ~50 to ~200 complexity.
+//
+// It used to page through the first 500 items of each board and compare in
+// code: 7,020 complexity per board, and blind past 500. Medical Evaluation
+// passed 500 items in September 2026 and Subscription passed 800, so a patient
+// outside the first page was "not found" the moment their cached state expired.
+//
+// Board order is unchanged, most advanced first: the same UID is on every board
+// the patient has reached, and the furthest one is their current status. Every
+// column comes back either way, so callers need no second fetch.
+async function findPatientByUid(uid, { itemIdHint } = {}) {
   const { BOARDS, PATIENT_UID_COLUMNS } = require("./config");
-  const boardIds = [BOARDS.WELCOME_CALL, BOARDS.INSURANCE, BOARDS.MEDICAL_EVAL, BOARDS.SUBSCRIPTION];
+  const safeUid = validateUid(uid);
 
+  // The hint is only ever an item id written by indexUid, but it is the one
+  // input here not validated upstream, so a corrupt value is skipped, not
+  // thrown on.
+  if (itemIdHint && /^\d+$/.test(String(itemIdHint))) {
+    const item = await getItem(itemIdHint);
+    const boardId = String(item?.board?.id || "");
+    const uidColumnId = PATIENT_UID_COLUMNS[boardId];
+    const matches = Boolean(uidColumnId) &&
+      item.column_values.some(c => c.id === uidColumnId && c.text === safeUid);
+    if (matches) return { ...item, boardId };
+    console.log(`[monday] uid index pointed ${safeUid} at item ${itemIdHint}, which is ${item ? "a different patient" : "gone"}; searching boards`);
+  }
+
+  const boardIds = [BOARDS.WELCOME_CALL, BOARDS.INSURANCE, BOARDS.MEDICAL_EVAL, BOARDS.SUBSCRIPTION];
   for (const boardId of boardIds) {
     const uidColumnId = PATIENT_UID_COLUMNS[boardId];
     if (!uidColumnId) continue;
@@ -161,27 +202,16 @@ async function findPatientByUid(uid) {
     const safeUidCol = validateColumnId(uidColumnId);
 
     const data = await mondayQuery(`{
-      boards(ids: [${safeBoard}]) {
-        items_page(limit: 500) {
-          items {
-            id name group { id title }
-            column_values(ids: ["${safeUidCol}", "phone_mm1x44yk", "color_mm1wyr92", "color_mm1ws96t", "date_mm1wf43j"]) {
-              id type text value
-            }
-          }
+      items_page_by_column_values(board_id: ${safeBoard}, limit: 1, columns: [{ column_id: "${safeUidCol}", column_values: ["${safeUid}"] }]) {
+        items {
+          id name board { id } group { id title }
+          column_values { id type text value }
         }
       }
     }`);
 
-    const board = data.boards?.[0];
-    if (!board) continue;
-
-    for (const item of board.items_page.items) {
-      const uidCol = item.column_values.find(c => c.id === uidColumnId);
-      if (uidCol?.text === uid) {
-        return { ...item, boardId: safeBoard };
-      }
-    }
+    const item = data.items_page_by_column_values?.items?.[0];
+    if (item) return { ...item, boardId: safeBoard };
   }
   return null;
 }
