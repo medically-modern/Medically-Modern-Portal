@@ -24,20 +24,23 @@ try {
 
 const app = express();
 
-// Railway terminates TLS at its edge and forwards over an internal hop, so the
-// socket peer is always the same 100.64.x address and the patient's IP arrives
-// in X-Forwarded-For. Without this, req.ip is that one internal address for
-// every request, and both rate limiters below collapse into a single bucket
-// shared by every patient, every scanner, and Monday -- 100 requests a minute
-// for the whole world, and every [security] log line naming the same "attacker".
+// Railway terminates TLS at an edge POP and forwards over an internal hop, so
+// the socket peer is always the same 100.64.x address and the patient's IP
+// arrives in X-Forwarded-For. Without this, req.ip is that one internal
+// address for every request, and both rate limiters below collapse into a
+// single bucket shared by every patient, every scanner, and Monday -- 100
+// requests a minute for the whole world, and every [security] log line naming
+// the same "attacker".
 //
-// Exactly one trusted hop, not `true`: with a number Express takes the entry
-// the proxy wrote (the rightmost), so a client-forged header is ignored; `true`
-// takes the leftmost, which is whatever the client sent. Whether Railway's
-// internal routing counts as a second hop was not documented when this was
-// written -- /api/debug/ip below exists to check. If it ever reports a 100.64.x
-// address, the count is one short.
-app.set("trust proxy", 1);
+// Two hops, measured with /api/debug/ip in September 2026: the header is
+// exactly "<client>, <edge POP>", so trusting one hop keys everything on the
+// POP and trusting two reaches the client. Railway's edge replaces both
+// X-Forwarded-For and X-Real-IP outright -- a forged value never reaches the
+// app -- so no entry here is client-controlled and the count cannot be turned
+// into a spoof. A shorter chain still resolves to the client; a longer one
+// would fall back to keying on a hop, never on a forgery. If /api/debug/ip
+// ever reports an `ip` that is not your own address, the count has drifted.
+app.set("trust proxy", 2);
 
 // ─── [#6] Security headers ───
 app.use(helmet({
@@ -731,7 +734,7 @@ app.get("/api/script/:uid/:kind", statusLimiter, async (req, res) => {
 // What the limiters key on. Returns the address Express resolved for this
 // request next to the raw proxy headers, so the trust-proxy hop count at the
 // top of this file can be checked from a phone rather than assumed: `ip`
-// should be your public address. A 100.64.x value means the count is short.
+// should equal your own public address and the first entry of xForwardedFor.
 app.get("/api/debug/ip", requireDebugKey, (req, res) => {
   res.json({
     ip: req.ip,
