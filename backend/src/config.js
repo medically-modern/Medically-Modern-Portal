@@ -158,6 +158,23 @@ function isScriptReferralSource(referralSourceText) {
   return matchesReferralSource(referralSourceText, SCRIPT_REFERRAL_SOURCES);
 }
 
+// Intake texts sent by hand. Keyed by Medical Evaluation item id, value is the
+// date it was sent. The recovery path re-attempts the intake text on every later
+// Medical Eval stage change for any item without a delivery record, and a text
+// sent from someone's phone leaves no record -- so without this, a patient who
+// was already sent their link by hand gets the full intake message again on
+// their next stage move. There is no admin write path into Redis, which is why
+// this lives in code. An entry is dead once the patient leaves Medical Eval
+// (each board has its own item id, and recovery runs on this board only) and
+// can be removed then.
+const MANUAL_INTAKE_SENDS = {
+  "13021886969": "2026-09-17"
+};
+
+function manualIntakeSendDate(itemId) {
+  return MANUAL_INTAKE_SENDS[String(itemId)] || null;
+}
+
 // Returns null when there is no UID to build a link from. That is deliberate —
 // this text promises a link, and sending it without one spends the patient's
 // only notification on a dead end. Callers must treat null as "don't send".
@@ -187,5 +204,6 @@ module.exports = {
   STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME,
   MESSAGES, COMPLETED_GROUPS,
   INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCES, SCRIPT_REFERRAL_SOURCES,
-  isTextableReferralSource, isScriptReferralSource, buildIntakeSms
+  isTextableReferralSource, isScriptReferralSource, buildIntakeSms,
+  MANUAL_INTAKE_SENDS, manualIntakeSendDate
 };

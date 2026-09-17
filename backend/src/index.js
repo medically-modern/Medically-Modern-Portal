@@ -4,7 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
-const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_MAX_PHASE, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCES, isTextableReferralSource, buildIntakeSms } = require("./config");
+const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_MAX_PHASE, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCES, isTextableReferralSource, buildIntakeSms, manualIntakeSendDate } = require("./config");
 const { KINDS: SCRIPT_KINDS, readScriptFields, scriptKindsFor, scriptsAreOffered, scriptFilename, scriptsPayload, buildScriptPdf } = require("./script");
 const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
@@ -162,6 +162,14 @@ async function alreadyDeliveredIntakeSms(itemId) {
 // an attempt as a delivery is how a patient ends up looking texted when they
 // were not.
 async function sendIntakeSms(itemId, { phone, patientUid, patientName, referralSource }) {
+  // A text someone already sent by hand. First, before even the referral gate:
+  // nothing below has anything to add, and this must not burn the claim.
+  const sentByHand = manualIntakeSendDate(itemId);
+  if (sentByHand) {
+    console.log(`[webhook] ${INTAKE_SMS_STAGE} skipped for item ${itemId}: sent by hand on ${sentByHand}`);
+    return;
+  }
+
   // Checked before anything else, and before any Redis write: a referral source
   // that is not on the list is never texted, so it must not burn the claim either.
   // An empty column is not a match, which matters more than it looks -- a value
