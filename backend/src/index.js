@@ -24,6 +24,21 @@ try {
 
 const app = express();
 
+// Railway terminates TLS at its edge and forwards over an internal hop, so the
+// socket peer is always the same 100.64.x address and the patient's IP arrives
+// in X-Forwarded-For. Without this, req.ip is that one internal address for
+// every request, and both rate limiters below collapse into a single bucket
+// shared by every patient, every scanner, and Monday -- 100 requests a minute
+// for the whole world, and every [security] log line naming the same "attacker".
+//
+// Exactly one trusted hop, not `true`: with a number Express takes the entry
+// the proxy wrote (the rightmost), so a client-forged header is ignored; `true`
+// takes the leftmost, which is whatever the client sent. Whether Railway's
+// internal routing counts as a second hop was not documented when this was
+// written -- /api/debug/ip below exists to check. If it ever reports a 100.64.x
+// address, the count is one short.
+app.set("trust proxy", 1);
+
 // ─── [#6] Security headers ───
 app.use(helmet({
   contentSecurityPolicy: {
@@ -54,12 +69,21 @@ app.use(cors({
 app.use(express.json());
 
 // ─── [#6] Global rate limiter — 100 req/min/IP ───
+// Monday's webhook is exempt. It is authenticated by a 256-bit secret in the
+// path and answered with a 401 in microseconds when that is wrong, so the
+// limiter protects nothing there -- but it can cost real events: a bulk board
+// operation fires one webhook per item inside a minute, and a 429 to Monday is
+// a stage change the tracker never sees. (Monday documents a retry of once a
+// minute for 30 minutes on its webhooks page, and contradicts it elsewhere.)
+// Before this exemption the webhook also shared the bucket with patient
+// traffic, so a scanner burst could silence the integration.
 app.use(rateLimit({
   windowMs: 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests, please try again later" }
+  message: { error: "Too many requests, please try again later" },
+  skip: (req) => req.path.startsWith("/webhooks/")
 }));
 
 // ─── [#4] Strict rate limiter for status endpoints — 30 req/min/IP ───
@@ -687,6 +711,21 @@ app.get("/api/script/:uid/:kind", statusLimiter, async (req, res) => {
 });
 
 // ─── [#2] Debug endpoints — protected by API key ───
+
+// What the limiters key on. Returns the address Express resolved for this
+// request next to the raw proxy headers, so the trust-proxy hop count at the
+// top of this file can be checked from a phone rather than assumed: `ip`
+// should be your public address. A 100.64.x value means the count is short.
+app.get("/api/debug/ip", requireDebugKey, (req, res) => {
+  res.json({
+    ip: req.ip,
+    ips: req.ips,
+    xForwardedFor: req.headers["x-forwarded-for"] || null,
+    xRealIp: req.headers["x-real-ip"] || null,
+    railwayEdge: req.headers["x-railway-edge"] || null
+  });
+});
+
 app.get("/api/debug/board/:boardId", requireDebugKey, async (req, res) => {
   try {
     // [#5] Validate board ID is numeric only
