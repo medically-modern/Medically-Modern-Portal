@@ -113,21 +113,49 @@ const MESSAGES = {
 // that the link is the channel, and earn a bookmark. Nothing else reaches them.
 const INTAKE_SMS_STAGE = "0B";
 
-// ...and only to patients who came to us directly. Every other referral reaches
-// us through someone the patient is already dealing with — their manufacturer,
-// their doctor's office, a payer — and those people do the telling. A cold text
-// from a company the patient never contacted reads as spam, which is a bad way
-// to spend the one message we get. Board labels on Referral Source are:
-// Patient | Tandem | Beta Bionics | CareCentrix | Doctor | Solace Advocates.
-const INTAKE_SMS_REFERRAL_SOURCE = "Patient";
+// ...and only from the referral sources listed here. Not texting is the default
+// and the list is the exception: most referrals reach us through someone the
+// patient is already dealing with — their manufacturer, a payer, their doctor's
+// office — and those people do the telling. A cold text from a company the
+// patient never contacted reads as spam, which is a bad way to spend the one
+// message we get.
+//
+// What earns a source a place here is telling its own patients we are coming, so
+// our text lands as the thing they were told to expect. District Endocrine does;
+// that is the whole reason it is listed and the generic Doctor label is not.
+//
+// Referral Source carried ten labels when this was last checked — Patient,
+// Tandem, Beta Bionics, CareCentrix, Doctor, Solace Advocates, Wellstart, SNJ,
+// District Endocrine, SNJ [2.0] — and the board grows them faster than this
+// comment gets updated. Read that as a sample, not an inventory: the array is
+// what governs, and a label missing from it is never texted.
+const INTAKE_SMS_REFERRAL_SOURCES = ["Patient", "District Endocrine"];
+
+// The doctor's script is offered to a strictly narrower set, which is why this
+// is its own list rather than a second read of the one above. A patient who came
+// to us directly is chasing their own paperwork and the script is the fastest
+// thing we can hand them. A practice referral already has staff driving it, and
+// giving that patient a prescription to chase cuts across the people doing the
+// work. So District Endocrine is texted and gets no script card — adding a
+// source to the text list is not a decision about scripts, and vice versa.
+const SCRIPT_REFERRAL_SOURCES = ["Patient"];
 
 // Matches on the label text, not the status index. The index is a label id that
 // survives a reorder but not a delete-and-recreate, and the text is what anyone
-// looking at the board sees. An unset column returns "" and is not a match —
-// deliberately, since "anything but Patient" includes "not filled in yet".
+// looking at the board sees. An unset column returns "" and matches nothing —
+// deliberately, since "not on the list" includes "not filled in yet".
+function matchesReferralSource(referralSourceText, allowedLabels) {
+  const value = String(referralSourceText || "").trim().toLowerCase();
+  if (!value) return false;
+  return allowedLabels.some((label) => label.trim().toLowerCase() === value);
+}
+
 function isTextableReferralSource(referralSourceText) {
-  return String(referralSourceText || "").trim().toLowerCase()
-    === INTAKE_SMS_REFERRAL_SOURCE.toLowerCase();
+  return matchesReferralSource(referralSourceText, INTAKE_SMS_REFERRAL_SOURCES);
+}
+
+function isScriptReferralSource(referralSourceText) {
+  return matchesReferralSource(referralSourceText, SCRIPT_REFERRAL_SOURCES);
 }
 
 // Returns null when there is no UID to build a link from. That is deliberate —
@@ -158,5 +186,6 @@ module.exports = {
   PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_COLUMNS, DEVICE_NOT_SERVED, SCRIPT_MAX_PHASE,
   STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME,
   MESSAGES, COMPLETED_GROUPS,
-  INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCE, isTextableReferralSource, buildIntakeSms
+  INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCES, SCRIPT_REFERRAL_SOURCES,
+  isTextableReferralSource, isScriptReferralSource, buildIntakeSms
 };

@@ -4,7 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn } = require("./monday");
-const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_MAX_PHASE, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCE, isTextableReferralSource, buildIntakeSms } = require("./config");
+const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_MAX_PHASE, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCES, isTextableReferralSource, buildIntakeSms } = require("./config");
 const { KINDS: SCRIPT_KINDS, readScriptFields, scriptKindsFor, scriptsAreOffered, scriptFilename, scriptsPayload, buildScriptPdf } = require("./script");
 const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
@@ -111,8 +111,8 @@ async function alreadyDeliveredIntakeSms(itemId) {
 }
 
 // ─── Intake SMS dispatch ───
-// The one text a patient ever receives -- and only if they referred themselves;
-// see INTAKE_SMS_REFERRAL_SOURCE. Both call sites below go through here, so the
+// The one text a patient ever receives -- and only from a referral source on
+// INTAKE_SMS_REFERRAL_SOURCES. Both call sites below go through here, so the
 // ordering guarantees live in exactly one place.
 //
 // Two failure modes this has to survive, because there is no second text to
@@ -138,14 +138,14 @@ async function alreadyDeliveredIntakeSms(itemId) {
 // an attempt as a delivery is how a patient ends up looking texted when they
 // were not.
 async function sendIntakeSms(itemId, { phone, patientUid, patientName, referralSource }) {
-  // Checked before anything else, and before any Redis write: a referral that is
-  // not the patient's own is never texted, so it must not burn the claim either.
+  // Checked before anything else, and before any Redis write: a referral source
+  // that is not on the list is never texted, so it must not burn the claim either.
   // An empty column is not a match, which matters more than it looks -- a value
   // written a moment after create_item would otherwise suppress the text for
   // good. It doesn't: nothing is claimed here, so the recovery path on the next
   // Medical Eval stage change re-reads the column and sends then.
   if (!isTextableReferralSource(referralSource)) {
-    console.log(`[webhook] ${INTAKE_SMS_STAGE} skipped for item ${itemId}: referral source is ${referralSource ? `"${referralSource}"` : "unset"}, not ${INTAKE_SMS_REFERRAL_SOURCE}`);
+    console.log(`[webhook] ${INTAKE_SMS_STAGE} skipped for item ${itemId}: referral source is ${referralSource ? `"${referralSource}"` : "unset"}, not one of ${INTAKE_SMS_REFERRAL_SOURCES.join(" | ")}`);
     return;
   }
 
@@ -397,10 +397,11 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
 
       // ─── Notification dispatch — single-text model ───
       // At most one SMS per patient, at 0B, carrying the tracking link -- and
-      // only for patient-sourced referrals. Every later stage updates the portal
-      // silently: cachePatientState above runs unconditionally, so a patient we
-      // never text still has a live tracker the moment someone sends them the
-      // link. Widening this means adding stage codes to the check, nothing more.
+      // only for referral sources on the text list. Every later stage updates
+      // the portal silently: cachePatientState above runs unconditionally, so a
+      // patient we never text still has a live tracker the moment someone sends
+      // them the link. Widening this means adding stage codes to the check,
+      // nothing more.
       if (patientStage.code === INTAKE_SMS_STAGE) {
         await sendIntakeSms(itemId, { phone, patientUid, patientName, referralSource });
       } else {

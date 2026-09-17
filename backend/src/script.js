@@ -19,7 +19,7 @@
 
 const {
   REFERRAL_SOURCE_COLUMN, SCRIPT_COLUMNS, DEVICE_NOT_SERVED, SCRIPT_MAX_PHASE,
-  isTextableReferralSource
+  isScriptReferralSource
 } = require("./config");
 const { fillCgmPdf, fillPumpPdf } = require("./pdf");
 
@@ -58,11 +58,14 @@ function scriptKindsFor(fields) {
   return Object.keys(KINDS).filter(kind => isServed(fields[KINDS[kind].column]));
 }
 
-// Whether to offer the script at all. Same referral rule as the intake text --
-// a manufacturer or doctor referral already has someone driving the paperwork,
-// and handing that patient a prescription to chase would cut across them.
+// Whether to offer the script at all. This reads SCRIPT_REFERRAL_SOURCES, which
+// is deliberately narrower than the list that governs the intake text: a
+// manufacturer or practice referral already has someone driving the paperwork,
+// and handing that patient a prescription to chase would cut across them. The
+// two were one predicate until District Endocrine joined the text list -- if you
+// are adding a referral source, decide the two questions separately.
 function scriptsAreOffered({ referralSource, phase }) {
-  return isTextableReferralSource(referralSource) && Number(phase) <= SCRIPT_MAX_PHASE;
+  return isScriptReferralSource(referralSource) && Number(phase) <= SCRIPT_MAX_PHASE;
 }
 
 // Matches the name the intake backend used, so a patient who was emailed one
