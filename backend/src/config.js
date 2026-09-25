@@ -225,7 +225,7 @@ ${PORTAL_BASE_URL}?p=${patientUid}
 
 Save this link - it updates at every step, so you can always see where things stand. We'll contact you directly if we ever need you to confirm anything.
 
-Feel free to text us with any questions.`;
+Feel free to text us with any questions!`;
 }
 
 // Groups that indicate "Completed" on Welcome Call board
