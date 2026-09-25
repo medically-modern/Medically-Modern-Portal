@@ -1,5 +1,3 @@
-const { shortUid } = require("./uid");
-
 // Portal frontend URL
 const PORTAL_BASE_URL = "https://medicallymodern.com/portal";
 
@@ -197,10 +195,10 @@ function firstNameOf(patientName) {
 //
 // Two wordings. District Endocrine referrals get the text Medically Modern
 // wrote for them in September 2026: from Katie, by first name, naming the
-// practice. Every other source on the text list gets the default below. The
-// District Endocrine link carries the short form of the UID (uid.js), which is
-// what keeps that text to two SMS segments -- with the full UUID it is 307
-// characters for a five-letter first name, past the 306 that two can hold.
+// practice. Every other source on the text list gets the default below. Both
+// carry the full tracking link. The District Endocrine one has a full stop
+// straight after it, which resolveUid in index.js strips if a phone folds it
+// into the URL.
 //
 // Deliberately ASCII: em-dashes and curly quotes fall outside GSM-7, which
 // forces the whole message into UCS-2 at 67 chars per segment instead of 153.
@@ -211,12 +209,10 @@ function buildIntakeSms(patientUid, { patientName = "", referralSource = "" } = 
   if (!patientUid) return null;
 
   if (isDistrictEndocrineReferral(referralSource)) {
-    const shortId = shortUid(patientUid);
-    if (!shortId) return null;
     const firstName = firstNameOf(patientName);
     return `Hi${firstName ? ` ${firstName}` : ""}, it's Katie from Medically Modern. We received your prescription for your supplies from District Endocrine. We're working on processing your order.
 
-You can track your order here: ${PORTAL_BASE_URL}?p=${shortId}.
+You can track your order here: ${PORTAL_BASE_URL}?p=${patientUid}.
 
 Call or text us if you have any questions!`;
   }

@@ -8,7 +8,6 @@ const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SU
 const { KINDS: SCRIPT_KINDS, readScriptFields, scriptKindsFor, scriptsAreOffered, scriptFilename, scriptsPayload, buildScriptPdf } = require("./script");
 const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, getUidIndex, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
-const { resolveUid } = require("./uid");
 
 const fs = require("fs");
 const path = require("path");
@@ -187,7 +186,7 @@ async function sendIntakeSms(itemId, { phone, patientUid, patientName, referralS
 
   const message = buildIntakeSms(patientUid, { patientName, referralSource });
   if (!message) {
-    console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no usable patient UID, link would be dead`);
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no patient UID, link would be dead`);
     return;
   }
   if (!phone) {
@@ -524,6 +523,19 @@ async function resolveScripts(itemId, cached) {
 // ─── [#3] Phone lookup endpoint REMOVED — was unauthenticated, allowed enumeration ───
 // The portal frontend uses UID-based lookup only. Phone lookup is no longer exposed.
 
+// Every route that takes a portal UID reads it through here, before anything
+// touches Redis or Monday: the UUID exactly as given, or null for anything that
+// isn't one. It makes one allowance a bare UUID check wouldn't -- punctuation
+// stuck to the end. The District Endocrine text puts a full stop straight after
+// the link, and a phone that folds it into the URL should still land the patient
+// on their tracker, not on "not found".
+const PORTAL_UID_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[.,;:!?)]*$/i;
+
+function resolveUid(value) {
+  const match = PORTAL_UID_RE.exec(String(value ?? ""));
+  return match ? match[1] : null;
+}
+
 // Every monday lookup for a portal UID goes through here so the uid index is
 // always offered as the hint -- findPatientByUid explains why that is the
 // difference between one fetch and four.
@@ -536,8 +548,7 @@ async function lookupPatientByUid(uid) {
 // Rate limited + response minimized to only what the frontend needs
 app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
   try {
-    // [#4] Validate before touching Redis or Monday. The short form the District
-    // Endocrine text carries comes back here as the same UUID (uid.js).
+    // [#4] Validate UUID format before touching Redis or Monday
     const uid = resolveUid(req.params.uid);
     if (!uid) {
       return res.status(400).json({ error: "Invalid patient identifier" });
@@ -898,8 +909,8 @@ app.get("/og-image.png", async (req, res) => {
 
 // ─── Portal page with dynamic Open Graph meta for iPhone previews ───
 app.get("/portal", async (req, res) => {
-  // Resolved before anything else, so a short link previews like a long one --
-  // and only a well-formed UUID is ever written into the meta tags below.
+  // Resolved before anything else, so only a well-formed UUID is ever written
+  // into the meta tags below -- never whatever arrived in ?p=.
   const uid = resolveUid(req.query.p);
 
   let ogTitle = "Medically Modern — Patient Portal";
