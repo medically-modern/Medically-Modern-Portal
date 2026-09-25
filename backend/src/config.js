@@ -1,3 +1,5 @@
+const { shortUid } = require("./uid");
+
 // Portal frontend URL
 const PORTAL_BASE_URL = "https://medicallymodern.com/portal";
 
@@ -158,6 +160,12 @@ function isScriptReferralSource(referralSourceText) {
   return matchesReferralSource(referralSourceText, SCRIPT_REFERRAL_SOURCES);
 }
 
+// Which wording the intake text uses -- see buildIntakeSms. Not a gate: the list
+// above decides whether a source is texted at all.
+function isDistrictEndocrineReferral(referralSourceText) {
+  return matchesReferralSource(referralSourceText, ["District Endocrine"]);
+}
+
 // Intake texts sent by hand. Keyed by Medical Evaluation item id, value is the
 // date it was sent. The recovery path re-attempts the intake text on every later
 // Medical Eval stage change for any item without a delivery record, and a text
@@ -175,16 +183,44 @@ function manualIntakeSendDate(itemId) {
   return MANUAL_INTAKE_SENDS[String(itemId)] || null;
 }
 
+// The name the District Endocrine text greets them by: the item name without the
+// [TEST] marker, up to the first space -- the same first name the tracker says
+// hello to. Names on Medical Evaluation are "First Last" (every District
+// Endocrine item, checked September 2026), so this is never a surname.
+function firstNameOf(patientName) {
+  return String(patientName || "").replace(/^\[TEST\]\s*/, "").trim().split(/\s+/)[0];
+}
+
 // Returns null when there is no UID to build a link from. That is deliberate —
 // this text promises a link, and sending it without one spends the patient's
 // only notification on a dead end. Callers must treat null as "don't send".
 //
+// Two wordings. District Endocrine referrals get the text Medically Modern
+// wrote for them in September 2026: from Katie, by first name, naming the
+// practice. Every other source on the text list gets the default below. The
+// District Endocrine link carries the short form of the UID (uid.js), which is
+// what keeps that text to two SMS segments -- with the full UUID it is 307
+// characters for a five-letter first name, past the 306 that two can hold.
+//
 // Deliberately ASCII: em-dashes and curly quotes fall outside GSM-7, which
 // forces the whole message into UCS-2 at 67 chars per segment instead of 153.
 // The rest of MESSAGES above still uses them, but those never go out as SMS
-// now — this one does, and it is long enough for the encoding to matter.
-function buildIntakeSms(patientUid) {
+// now — these do, and they are long enough for the encoding to matter. That
+// includes apostrophes: "it's" and "We're" must stay straight.
+function buildIntakeSms(patientUid, { patientName = "", referralSource = "" } = {}) {
   if (!patientUid) return null;
+
+  if (isDistrictEndocrineReferral(referralSource)) {
+    const shortId = shortUid(patientUid);
+    if (!shortId) return null;
+    const firstName = firstNameOf(patientName);
+    return `Hi${firstName ? ` ${firstName}` : ""}, it's Katie from Medically Modern. We received your prescription for your supplies from District Endocrine. We're working on processing your order.
+
+You can track your order here: ${PORTAL_BASE_URL}?p=${shortId}.
+
+Call or text us if you have any questions!`;
+  }
+
   return `Hi, it's Medically Modern. We've received your referral and we're getting started on your order.
 
 Track your progress anytime:

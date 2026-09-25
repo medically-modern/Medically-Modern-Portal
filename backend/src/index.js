@@ -8,6 +8,7 @@ const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SU
 const { KINDS: SCRIPT_KINDS, readScriptFields, scriptKindsFor, scriptsAreOffered, scriptFilename, scriptsPayload, buildScriptPdf } = require("./script");
 const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, getUidIndex, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
+const { resolveUid } = require("./uid");
 
 const fs = require("fs");
 const path = require("path");
@@ -184,9 +185,9 @@ async function sendIntakeSms(itemId, { phone, patientUid, patientName, referralS
     return;
   }
 
-  const message = buildIntakeSms(patientUid);
+  const message = buildIntakeSms(patientUid, { patientName, referralSource });
   if (!message) {
-    console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no patient UID, link would be dead`);
+    console.error(`[webhook] ${INTAKE_SMS_STAGE} SUPPRESSED for item ${itemId}: no usable patient UID, link would be dead`);
     return;
   }
   if (!phone) {
@@ -535,11 +536,10 @@ async function lookupPatientByUid(uid) {
 // Rate limited + response minimized to only what the frontend needs
 app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
   try {
-    const uid = req.params.uid;
-
-    // [#4] Validate UUID format before touching Redis or Monday
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_RE.test(uid)) {
+    // [#4] Validate before touching Redis or Monday. The short form the District
+    // Endocrine text carries comes back here as the same UUID (uid.js).
+    const uid = resolveUid(req.params.uid);
+    if (!uid) {
       return res.status(400).json({ error: "Invalid patient identifier" });
     }
 
@@ -663,10 +663,9 @@ app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
 // of birth, prescriber. Hence no-store, and the same rate limiter.
 app.get("/api/script/:uid/:kind", statusLimiter, async (req, res) => {
   try {
-    const { uid, kind } = req.params;
-
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_RE.test(uid)) {
+    const { kind } = req.params;
+    const uid = resolveUid(req.params.uid);
+    if (!uid) {
       return res.status(400).json({ error: "Invalid patient identifier" });
     }
     if (!SCRIPT_KINDS[kind]) {
@@ -869,7 +868,7 @@ async function preGenerateOgImages() {
 }
 
 app.get("/og-image.png", async (req, res) => {
-  const uid = req.query.p;
+  const uid = resolveUid(req.query.p);
   let activeIdx = -1;
 
   if (uid) {
@@ -899,8 +898,10 @@ app.get("/og-image.png", async (req, res) => {
 
 // ─── Portal page with dynamic Open Graph meta for iPhone previews ───
 app.get("/portal", async (req, res) => {
-  const uid = req.query.p;
-  
+  // Resolved before anything else, so a short link previews like a long one --
+  // and only a well-formed UUID is ever written into the meta tags below.
+  const uid = resolveUid(req.query.p);
+
   let ogTitle = "Medically Modern — Patient Portal";
   let ogDescription = "Check your onboarding progress and stay updated on your equipment order.";
   let ogImage = uid
