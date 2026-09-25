@@ -196,9 +196,10 @@ function firstNameOf(patientName) {
 // Two wordings. District Endocrine referrals get the text Medically Modern
 // wrote for them in September 2026: from Katie, by first name, naming the
 // practice. Every other source on the text list gets the default below. Both
-// carry the full tracking link. The District Endocrine one has a full stop
-// straight after it, which resolveUid in index.js strips if a phone folds it
-// into the URL.
+// carry the full tracking link with nothing after it on its line: a phone that
+// folds trailing punctuation into the URL sends the patient to a tracker that
+// rejects the UID. That is why the District Endocrine text has no full stop
+// after its link, although the wording as written had one.
 //
 // Deliberately ASCII: em-dashes and curly quotes fall outside GSM-7, which
 // forces the whole message into UCS-2 at 67 chars per segment instead of 153.
@@ -212,7 +213,7 @@ function buildIntakeSms(patientUid, { patientName = "", referralSource = "" } = 
     const firstName = firstNameOf(patientName);
     return `Hi${firstName ? ` ${firstName}` : ""}, it's Katie from Medically Modern. We received your prescription for your supplies from District Endocrine. We're working on processing your order.
 
-You can track your order here: ${PORTAL_BASE_URL}?p=${patientUid}.
+You can track your order here: ${PORTAL_BASE_URL}?p=${patientUid}
 
 Call or text us if you have any questions!`;
   }

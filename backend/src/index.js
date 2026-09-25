@@ -523,19 +523,6 @@ async function resolveScripts(itemId, cached) {
 // ─── [#3] Phone lookup endpoint REMOVED — was unauthenticated, allowed enumeration ───
 // The portal frontend uses UID-based lookup only. Phone lookup is no longer exposed.
 
-// Every route that takes a portal UID reads it through here, before anything
-// touches Redis or Monday: the UUID exactly as given, or null for anything that
-// isn't one. It makes one allowance a bare UUID check wouldn't -- punctuation
-// stuck to the end. The District Endocrine text puts a full stop straight after
-// the link, and a phone that folds it into the URL should still land the patient
-// on their tracker, not on "not found".
-const PORTAL_UID_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[.,;:!?)]*$/i;
-
-function resolveUid(value) {
-  const match = PORTAL_UID_RE.exec(String(value ?? ""));
-  return match ? match[1] : null;
-}
-
 // Every monday lookup for a portal UID goes through here so the uid index is
 // always offered as the hint -- findPatientByUid explains why that is the
 // difference between one fetch and four.
@@ -548,9 +535,11 @@ async function lookupPatientByUid(uid) {
 // Rate limited + response minimized to only what the frontend needs
 app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
   try {
+    const uid = req.params.uid;
+
     // [#4] Validate UUID format before touching Redis or Monday
-    const uid = resolveUid(req.params.uid);
-    if (!uid) {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(uid)) {
       return res.status(400).json({ error: "Invalid patient identifier" });
     }
 
@@ -674,9 +663,10 @@ app.get("/api/status/uid/:uid", statusLimiter, async (req, res) => {
 // of birth, prescriber. Hence no-store, and the same rate limiter.
 app.get("/api/script/:uid/:kind", statusLimiter, async (req, res) => {
   try {
-    const { kind } = req.params;
-    const uid = resolveUid(req.params.uid);
-    if (!uid) {
+    const { uid, kind } = req.params;
+
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(uid)) {
       return res.status(400).json({ error: "Invalid patient identifier" });
     }
     if (!SCRIPT_KINDS[kind]) {
@@ -879,7 +869,7 @@ async function preGenerateOgImages() {
 }
 
 app.get("/og-image.png", async (req, res) => {
-  const uid = resolveUid(req.query.p);
+  const uid = req.query.p;
   let activeIdx = -1;
 
   if (uid) {
@@ -909,10 +899,8 @@ app.get("/og-image.png", async (req, res) => {
 
 // ─── Portal page with dynamic Open Graph meta for iPhone previews ───
 app.get("/portal", async (req, res) => {
-  // Resolved before anything else, so only a well-formed UUID is ever written
-  // into the meta tags below -- never whatever arrived in ?p=.
-  const uid = resolveUid(req.query.p);
-
+  const uid = req.query.p;
+  
   let ogTitle = "Medically Modern — Patient Portal";
   let ogDescription = "Check your onboarding progress and stay updated on your equipment order.";
   let ogImage = uid
