@@ -453,8 +453,20 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
         // claim that prove delivery do not follow a patient to Insurance -- and a
         // recovery attempt there would read as a fresh referral to someone whose
         // authorization is already in flight.
+        //
+        // Never on a move to Stuck. Stuck is us stopping work on the referral,
+        // and the intake text tells the patient we are processing their order.
+        // Without this, everyone who arrived before their referral source was on
+        // the text list was told exactly that at the moment we gave up on them:
+        // District Endocrine patients from before 2026-09-17 marked Stuck on
+        // 2026-09-29 (five) and 2026-10-02 (two). Nothing is claimed here, so a
+        // patient taken back off Stuck is still recovered on their next move.
         if (String(boardId) === BOARDS.MEDICAL_EVAL) {
-          await sendIntakeSms(itemId, { phone, patientUid, patientName, referralSource });
+          if (patientStage.id === "stuck_medical") {
+            console.log(`[webhook] ${INTAKE_SMS_STAGE} recovery skipped for item ${itemId}: moved to Stuck`);
+          } else {
+            await sendIntakeSms(itemId, { phone, patientUid, patientName, referralSource });
+          }
         }
       }
 
