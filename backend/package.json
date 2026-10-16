@@ -7,7 +7,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test:create-patient": "node scripts/create-test-patient.js",
-    "test:advance-stage": "node scripts/advance-stage.js"
+    "test:advance-stage": "node scripts/advance-stage.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@ringcentral/sdk": "^4.7.3",

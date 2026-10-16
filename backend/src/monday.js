@@ -37,6 +37,15 @@ function validateUid(uid) {
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
 const API_URL = "https://api.monday.com/v2";
 
+// The Friday forward (fridayForward.js, the same file josh-monday-automations and auto-doctor-database-search run):
+// every mutation Monday ACCEPTS below is handed to Friday afterwards, exactly as it was sent, so Friday's copy of the
+// board gets the same write (today the Patient UID this service writes on a new Medical Evaluation item). It only ever
+// POSTS to Friday, after Monday's answer, from a queue on a timer in this process: it cannot delay, change or fail a
+// Monday write, and a Friday that is down costs a retry and one alert. A write on a board FRIDAY_BOARD_IDS doesn't
+// name is not sent. OFF unless FRIDAY_FORWARD=1 with FRIDAY_URL and FRIDAY_API_KEY. Its counters are on /health.
+const { createFridayForward } = require("./fridayForward");
+const fridayForward = createFridayForward({ env: process.env, log: (m) => console.log(m), service: "patient-intake-texts-backend" });
+
 async function mondayQuery(query, variables = {}) {
   const res = await fetch(API_URL, {
     method: "POST",
@@ -50,6 +59,11 @@ async function mondayQuery(query, variables = {}) {
   const data = await res.json();
   if (data.errors) {
     throw new Error(`Monday API error: ${JSON.stringify(data.errors)}`);
+  }
+  // Monday said yes (HTTP 2xx, an answer, no errors): Friday hears the same write. Its own try, so nothing it does can
+  // ever reach the caller; a reply that isn't a clean yes (a 429 or 5xx body without `errors`) is never forwarded.
+  if (res.ok && data && data.data) {
+    try { fridayForward.onMutation({ query, variables, data: data.data }); } catch { /* never the Monday path's concern */ }
   }
   return data.data;
 }
@@ -216,4 +230,4 @@ async function findPatientByUid(uid, { itemIdHint } = {}) {
   return null;
 }
 
-module.exports = { mondayQuery, getItem, findPatientByPhone, findPatientByUid, createItem, updateColumn, changeStage, moveItemToGroup };
+module.exports = { mondayQuery, getItem, findPatientByPhone, findPatientByUid, createItem, updateColumn, changeStage, moveItemToGroup, fridayForward };
