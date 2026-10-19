@@ -8,7 +8,7 @@ const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SU
 const { KINDS: SCRIPT_KINDS, readScriptFields, scriptKindsFor, scriptsAreOffered, scriptFilename, scriptsPayload, buildScriptPdf } = require("./script");
 const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, getUidIndex, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, claimWelcomeText, confirmWelcomeText, releaseWelcomeText, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
-const { welcomeTextsMode, isWelcomeTextColumn, handleWelcomeTextEvent } = require("./welcomeTexts");
+const { welcomeTextsMode, isWelcomeTextColumn, handleWelcomeTextEvent, ensureWelcomeTextWebhooks } = require("./welcomeTexts");
 
 const fs = require("fs");
 const path = require("path");
@@ -1016,6 +1016,12 @@ app.listen(PORT, async () => {
   console.log(`Portal backend running on port ${PORT}`);
   console.log(`Monday: ${process.env.MONDAY_TOKEN ? "configured" : "MISSING"}`);
   console.log(`Redis: ${process.env.REDIS_URL ? "configured" : "MISSING (will fall back to Monday API)"}`);
+  // While the Welcome Call texts are in test or on, make sure Monday is sending
+  // their two columns here (src/welcomeTexts.js). Not awaited: it logs its own
+  // outcome and never throws.
+  if (welcomeTextsMode(process.env) !== "off") {
+    ensureWelcomeTextWebhooks({ mondayQuery, secret: process.env.MONDAY_WEBHOOK_SECRET });
+  }
   // Pre-generate OG preview images (10 PNGs cached in memory)
   await preGenerateOgImages();
 });

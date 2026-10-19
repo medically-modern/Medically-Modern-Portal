@@ -46,7 +46,9 @@ const API_URL = "https://api.monday.com/v2";
 const { createFridayForward } = require("./fridayForward");
 const fridayForward = createFridayForward({ env: process.env, log: (m) => console.log(m), service: "patient-intake-texts-backend" });
 
-async function mondayQuery(query, variables = {}) {
+// `forwardToFriday: false` keeps a call out of the Friday forward: the webhook
+// setup in welcomeTexts.js, whose variables carry this service's secret URL.
+async function mondayQuery(query, variables = {}, { forwardToFriday = true } = {}) {
   const res = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -62,7 +64,7 @@ async function mondayQuery(query, variables = {}) {
   }
   // Monday said yes (HTTP 2xx, an answer, no errors): Friday hears the same write. Its own try, so nothing it does can
   // ever reach the caller; a reply that isn't a clean yes (a 429 or 5xx body without `errors`) is never forwarded.
-  if (res.ok && data && data.data) {
+  if (forwardToFriday && res.ok && data && data.data) {
     try { fridayForward.onMutation({ query, variables, data: data.data }); } catch { /* never the Monday path's concern */ }
   }
   return data.data;

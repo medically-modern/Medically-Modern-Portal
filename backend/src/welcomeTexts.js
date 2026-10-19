@@ -228,8 +228,64 @@ async function handleWelcomeTextEvent(event, { mode, getItem, sendSMS, isTestPat
   return done("error", `send failed: ${result.reason}`, 500);
 }
 
+// ─── The two webhooks ───
+// While the texts are in test or on, the service makes sure Monday sends it both
+// columns, creating whichever webhook is missing when it starts. It does this
+// itself because the webhook URL carries MONDAY_WEBHOOK_SECRET, which only this
+// service holds; created here, the secret never leaves Railway and Monday.
+//
+// Monday lists a board's webhooks with their event and column but never their
+// URL, so "already there" means any column-change webhook on that column.
+// Nothing else watched either column when this was written (2026-10-19). If
+// another service adds one, this skips ours and the texts stop arriving, which
+// test mode shows.
+const WEBHOOK_URL_BASE = "https://patient-portal-backend-production.up.railway.app/webhooks/monday/";
+
+// Monday writes the config back as a Ruby hash: {"columnId" => "color_mm1xzh1x"}.
+function webhookColumnOf(config) {
+  const m = String(config || "").match(/"columnId"\s*(?:=>|:)\s*"([a-z0-9_]+)"/);
+  return m ? m[1] : null;
+}
+
+async function ensureWelcomeTextWebhooks({ mondayQuery, secret, log = console.log }) {
+  if (!secret) {
+    log("[welcome-text] webhooks not checked: MONDAY_WEBHOOK_SECRET is not set");
+    return [];
+  }
+  // Nothing below may log the secret, including inside a Monday error message.
+  const scrub = (text) => String(text).split(secret).join("<secret>");
+  const results = [];
+  try {
+    const data = await mondayQuery(
+      `query ($board_id: ID!) { webhooks(board_id: $board_id) { id event config } }`,
+      { board_id: BOARDS.WELCOME_CALL },
+      { forwardToFriday: false }
+    );
+    const existing = data?.webhooks || [];
+    for (const columnId of [AUTOTEXT_TYPE_COLUMN, WELCOME_CALL_TEXT_COLUMN]) {
+      const found = existing.find((w) => w.event === "change_specific_column_value" && webhookColumnOf(w.config) === columnId);
+      if (found) {
+        results.push({ columnId, id: String(found.id), created: false });
+        log(`[welcome-text] webhook for ${columnId}: already there (${found.id})`);
+        continue;
+      }
+      const made = await mondayQuery(
+        `mutation ($board_id: ID!, $url: String!, $config: JSON) { create_webhook(board_id: $board_id, url: $url, event: change_specific_column_value, config: $config) { id } }`,
+        { board_id: BOARDS.WELCOME_CALL, url: WEBHOOK_URL_BASE + secret, config: JSON.stringify({ columnId }) },
+        { forwardToFriday: false }
+      );
+      const id = String(made?.create_webhook?.id || "");
+      results.push({ columnId, id, created: true });
+      log(`[welcome-text] webhook for ${columnId}: created (${id})`);
+    }
+  } catch (err) {
+    log(`[welcome-text] webhook check failed: ${scrub(err.message)}`);
+  }
+  return results;
+}
+
 module.exports = {
   AUTOTEXT_TYPE_COLUMN, WELCOME_CALL_TEXT_COLUMN, WELCOME_TEXT_FROM, PRIMARY_PHONE_COLUMN, WELCOME_TEXTS,
   welcomeTextsMode, isWelcomeTextColumn, labelIndexOf, welcomeTextFor, placeholderValue, renderWelcomeText,
-  claimKeyOf, handleWelcomeTextEvent
+  claimKeyOf, handleWelcomeTextEvent, webhookColumnOf, ensureWelcomeTextWebhooks
 };

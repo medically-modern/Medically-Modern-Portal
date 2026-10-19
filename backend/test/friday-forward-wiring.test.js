@@ -10,7 +10,7 @@ const src = (f) => fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8")
 test("monday.js hooks mondayQuery once, after Monday answered 2xx with data and no errors, in its own try", () => {
   const m = src("monday.js");
   const q = m.slice(m.indexOf("async function mondayQuery("), m.indexOf("// Get a single item by ID"));
-  const guard = q.indexOf("if (res.ok && data && data.data) {");
+  const guard = q.indexOf("if (forwardToFriday && res.ok && data && data.data) {");
   const hook = q.indexOf("try { fridayForward.onMutation({ query, variables, data: data.data }); } catch");
   assert.ok(guard > q.indexOf("if (data.errors)") && hook > guard && hook < q.indexOf("return data.data;"));
   assert.equal((m.match(/fridayForward\.on/g) || []).length, 1, "one hook");

@@ -28,7 +28,7 @@ The webhook URL itself is the secret. Monday.com stores the full URL (including 
 
 ### Welcome Call texts (built 2026-10-19, not yet switched on)
 
-Two more webhooks on the Welcome Call board replace the ten Monday automations that texted patients through the RingCentral integration. **They do not exist yet**: create them during the cut-over below.
+Two more webhooks on the Welcome Call board replace the ten Monday automations that texted patients through the RingCentral integration. **The service creates them itself** when it starts with `WELCOME_TEXTS` set to `test` or `on`, skipping any that already exist, and logs `[welcome-text] webhook for <column>: created (<id>)` or `already there (<id>)`. It creates them because the URL carries `MONDAY_WEBHOOK_SECRET`, which only it holds. Monday lists a webhook's column but not its URL, so "already there" means any column-change webhook on that column; nothing else watched either column on 2026-10-19.
 
 | Board | Board ID | Event | Config | Purpose |
 |---|---|---|---|---|
@@ -61,11 +61,11 @@ The automations it replaces (deactivate, don't delete, so rollback is a toggle):
 **Cut-over** (off-hours, like any structural board change):
 
 1. Set `WELCOME_TEXTS=test` and let Railway redeploy. Check `/health` says `"welcomeTexts": "test"`.
-2. Create the two webhooks (commands below). Real patients are still texted by the automations, and only by them.
+2. The service creates the two webhooks as it starts (the curl commands below do the same by hand). Real patients are still texted by the automations, and only by them.
 3. On a `TEST …` item whose Primary Phone is a team member's own mobile (a 555-01xx number can't receive a text), set Autotext Type, then press Send Welcome Call Text in the Command Center. Each text should arrive twice (once from the automation, once from here), word for word the same, both from (347) 503-7148. The logs show `[welcome-text] … sent (<label>)`. A RingCentral error naming the from number means this service's RingCentral login can't send from Corey's line: stop here.
 4. Deactivate the ten automations above, then set `WELCOME_TEXTS=on`. Between the two steps (the redeploy, about a minute), a change to either column texts no one; do it when no one is on the Welcome Call board.
 
-**Rollback**: set `WELCOME_TEXTS` to `off` and reactivate the ten automations. The webhooks can stay.
+**Rollback**: set `WELCOME_TEXTS` to `off` and reactivate the ten automations. The webhooks can stay; with the texts off, their events are logged and ignored. To remove them, delete them (below) only while `WELCOME_TEXTS` is `off`, or the next start creates them again.
 
 What changes for the patient: nothing in the wording. Trailing spaces and line breaks at the very end of a message are trimmed. A text that RingCentral answers with a 5xx is looked up in its message store before it counts as failed (it often went out anyway); one that really failed is answered 500, so Monday redelivers it, once a minute for up to 30 minutes. Each change on the board is sent at most once, keyed on Monday's `triggerUuid` in Redis (`welcome_text:<uuid>`, 90 days, no patient data).
 

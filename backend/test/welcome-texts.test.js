@@ -263,3 +263,68 @@ test("sendSMS checks the store only after a 5xx, and sends from the number it is
   assert.match(sms, /from: \{ phoneNumber: from \}/);
   assert.match(sms, /from = RC_FROM_NUMBER/);
 });
+
+// The startup check that creates the two webhooks (ensureWelcomeTextWebhooks).
+const SECRET = "f".repeat(64);
+function fakeMonday(existing) {
+  const calls = [];
+  let nextId = 900;
+  const mondayQuery = async (query, variables, opts) => {
+    calls.push({ query, variables, opts });
+    if (/^query/.test(query)) return { webhooks: existing };
+    return { create_webhook: { id: String(nextId++) } };
+  };
+  return { calls, mondayQuery };
+}
+
+test("creates both webhooks when neither is there, with the service's own URL, outside the Friday forward", async () => {
+  const m = fakeMonday([{ id: "581302892", event: "change_specific_column_value", config: '{"columnId" => "color_mm1ws96t"}' }]);
+  const logs = [];
+  const out = await W.ensureWelcomeTextWebhooks({ mondayQuery: m.mondayQuery, secret: SECRET, log: (l) => logs.push(l) });
+  assert.deepEqual(out.map((r) => [r.columnId, r.created]), [["color_mm1xzh1x", true], ["color_mm1xtqvv", true]]);
+  const creates = m.calls.filter((c) => /create_webhook/.test(c.query));
+  assert.equal(creates.length, 2);
+  for (const c of creates) {
+    assert.equal(c.variables.board_id, "18410804557");
+    assert.equal(c.variables.url, `https://patient-portal-backend-production.up.railway.app/webhooks/monday/${SECRET}`);
+    assert.match(c.query, /event: change_specific_column_value/);
+  }
+  assert.deepEqual(creates.map((c) => JSON.parse(c.variables.config).columnId), ["color_mm1xzh1x", "color_mm1xtqvv"]);
+  assert.ok(m.calls.every((c) => c.opts && c.opts.forwardToFriday === false), "the secret URL never goes to Friday");
+  assert.ok(logs.every((l) => !l.includes(SECRET)), "the secret is never logged");
+});
+
+test("leaves a webhook that is already there, in either config format", async () => {
+  const m = fakeMonday([
+    { id: "1", event: "change_specific_column_value", config: '{"columnId" => "color_mm1xzh1x"}' },
+    { id: "2", event: "change_specific_column_value", config: '{"columnId":"color_mm1xtqvv"}' }
+  ]);
+  const out = await W.ensureWelcomeTextWebhooks({ mondayQuery: m.mondayQuery, secret: SECRET, log: () => {} });
+  assert.deepEqual(out, [{ columnId: "color_mm1xzh1x", id: "1", created: false }, { columnId: "color_mm1xtqvv", id: "2", created: false }]);
+  assert.equal(m.calls.length, 1, "one read, no writes");
+
+  const one = fakeMonday([{ id: "1", event: "change_specific_column_value", config: '{"columnId" => "color_mm1xzh1x"}' }]);
+  await W.ensureWelcomeTextWebhooks({ mondayQuery: one.mondayQuery, secret: SECRET, log: () => {} });
+  assert.deepEqual(one.calls.filter((c) => /create_webhook/.test(c.query)).map((c) => JSON.parse(c.variables.config).columnId), ["color_mm1xtqvv"]);
+});
+
+test("no secret: nothing is asked of Monday; a Monday error is logged with the secret scrubbed, never thrown", async () => {
+  const m = fakeMonday([]);
+  assert.deepEqual(await W.ensureWelcomeTextWebhooks({ mondayQuery: m.mondayQuery, secret: "", log: () => {} }), []);
+  assert.equal(m.calls.length, 0);
+
+  const logs = [];
+  const failing = async (query) => {
+    if (/^query/.test(query)) return { webhooks: [] };
+    throw new Error(`Monday API error: could not reach https://x/webhooks/monday/${SECRET}`);
+  };
+  await W.ensureWelcomeTextWebhooks({ mondayQuery: failing, secret: SECRET, log: (l) => logs.push(l) });
+  assert.ok(logs.some((l) => l.includes("webhook check failed") && l.includes("<secret>")));
+  assert.ok(logs.every((l) => !l.includes(SECRET)));
+});
+
+test("the check runs at startup only while the texts are in test or on", () => {
+  const index = src("index.js");
+  assert.match(index, /if \(welcomeTextsMode\(process\.env\) !== "off"\) \{\s*ensureWelcomeTextWebhooks\(\{ mondayQuery, secret: process\.env\.MONDAY_WEBHOOK_SECRET \}\);/);
+  assert.match(src("monday.js"), /if \(forwardToFriday && res\.ok && data && data\.data\) \{/);
+});
