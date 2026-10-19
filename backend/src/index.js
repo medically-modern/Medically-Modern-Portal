@@ -6,8 +6,9 @@ const rateLimit = require("express-rate-limit");
 const { getItem, findPatientByUid, mondayQuery, updateColumn, fridayForward } = require("./monday");
 const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_MAX_PHASE, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCES, isTextableReferralSource, buildIntakeSms, manualIntakeSendDate } = require("./config");
 const { KINDS: SCRIPT_KINDS, readScriptFields, scriptKindsFor, scriptsAreOffered, scriptFilename, scriptsPayload, buildScriptPdf } = require("./script");
-const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, getUidIndex, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, redisHealthCheck } = require("./redis");
+const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, getUidIndex, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, claimWelcomeText, confirmWelcomeText, releaseWelcomeText, redisHealthCheck } = require("./redis");
 const { sendSMS, isTestPatient } = require("./sms");
+const { welcomeTextsMode, isWelcomeTextColumn, handleWelcomeTextEvent } = require("./welcomeTexts");
 
 const fs = require("fs");
 const path = require("path");
@@ -123,7 +124,9 @@ app.get("/health", async (req, res) => {
     timestamp: new Date().toISOString(),
     redis: redis.connected ? "connected" : "disconnected",
     // the Friday forward's counters (ids and counts only, never a value): src/fridayForward.js
-    friday: fridayForward.status()
+    friday: fridayForward.status(),
+    // off | test | on -- whether the Welcome Call texts go out: src/welcomeTexts.js
+    welcomeTexts: welcomeTextsMode(process.env)
   });
 });
 
@@ -345,6 +348,19 @@ app.post("/webhooks/monday/:secret", async (req, res) => {
       if (subUid) await indexUid(subUid, itemId);
 
       return res.json({ status: "received", stage: "4A" });
+
+    } else if (type === "update_column_value" && isWelcomeTextColumn(boardId, event.columnId)) {
+      // The Welcome Call board's patient texts (Autotext Type, Welcome Call
+      // Text), which Monday's RingCentral automations used to send. Handled
+      // before the stage advancer filter below, which would drop them as
+      // "non-stage-column". Answers 500 only for a send that failed and that
+      // RingCentral's store doesn't show, so Monday's redelivery is a retry.
+      const outcome = await handleWelcomeTextEvent(event, {
+        mode: welcomeTextsMode(process.env),
+        getItem, sendSMS, isTestPatient,
+        claim: claimWelcomeText, confirm: confirmWelcomeText, release: releaseWelcomeText
+      });
+      return res.status(outcome.httpStatus).json({ status: outcome.status, reason: outcome.reason });
 
     } else if (type === "update_column_value") {
       // Only process stage advancer column changes

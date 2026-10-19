@@ -1,0 +1,321 @@
+{
+  "note": "Exported from Monday on 2026-10-19 (list_automations, Welcome Call board 18410804557): the RingCentral SMS automations welcomeTexts.js replaces. Templates only, no patient data. welcome-texts.test.js checks every template in src/welcomeTexts.js against these, so a change to either side has to be made on purpose.",
+  "exported": "2026-10-19",
+  "boardId": "18410804557",
+  "recipes": [
+    {
+      "id": 573200740,
+      "active": true,
+      "description": null,
+      "columnId": "color_mm1xzh1x",
+      "index": 0,
+      "from": "+13475037148",
+      "phoneColumn": "phone_mm1x44yk",
+      "message": "YOUR INSULIN PUMP IS APPROVED AND READY FOR SHIPMENT\n\nProvider {pulse.text_mm1x46et} sent us your prescription for your Beta Bionics {pulse.color_mm1wjjtk} insulin pump, and our team at Medically Modern is ready to welcome you.\n\nGet onboarded by scheduling your welcome call here:\nhttps://calendly.com/records-medicallymodern/welcome-call"
+    },
+    {
+      "id": 573208150,
+      "active": true,
+      "description": null,
+      "columnId": "color_mm1xzh1x",
+      "index": 2,
+      "from": "+13475037148",
+      "phoneColumn": "phone_mm1x44yk",
+      "message": "YOUR INSULIN PUMP IS APPROVED AND READY FOR SHIPMENT\n\nProvider {pulse.text_mm1x46et} sent us your prescription for your Tandem {pulse.color_mm1wjjtk} insulin pump, and our team at Medically Modern is ready to welcome you.\n\n\nGet onboarded by scheduling your welcome call here:\nhttps://calendly.com/records-medicallymodern/welcome-call\n\nCheck out this quick infusion set video to see your options: \nhttps://youtu.be/LncrEnLoEJ4?si=_2DDOGSjKNdgspi0"
+    },
+    {
+      "id": 573213734,
+      "active": true,
+      "description": "Tandem supplies only",
+      "columnId": "color_mm1xzh1x",
+      "index": 4,
+      "from": "+13475037148",
+      "phoneColumn": "phone_mm1x44yk",
+      "message": "YOUR INSULIN PUMP SUPPLIES ARE APPROVED AND READY FOR SHIPMENT\n\nProvider {pulse.text_mm1x46et} sent us your prescription for your Tandem {pulse.color_mm1wjjtk} insulin pump supplies, and our team at Medically Modern is ready to welcome you.\n\nGet onboarded by scheduling your welcome call here:\nhttps://calendly.com/records-medicallymodern/welcome-call\n\nCheck out this quick infusion set video to see your options: \nhttps://youtu.be/LncrEnLoEJ4?si=_2DDOGSjKNdgspi0 "
+    },
+    {
+      "id": 573214800,
+      "active": true,
+      "description": "OFF/aug26",
+      "columnId": "color_mm1xzh1x",
+      "index": 1,
+      "from": "+13475037148",
+      "phoneColumn": "phone_mm1x44yk",
+      "message": "Great news, {pulse.name}!\n\nProvider {pulse.text_mm1x46et} sent us your prescription for your diabetes supplies, and our team at Medically Modern is ready to welcome you.\n\nGet onboarded by scheduling your welcome call here:\nhttps://calendly.com/records-medicallymodern/welcome-call\n"
+    },
+    {
+      "id": 603170115,
+      "active": true,
+      "description": null,
+      "columnId": "color_mm1xzh1x",
+      "index": 3,
+      "from": "+13475037148",
+      "phoneColumn": "phone_mm1x44yk",
+      "message": "YOUR INSULIN PUMP IS APPROVED AND READY FOR SHIPMENT\n\nProvider {pulse.text_mm1x46et} sent us your prescription for your {pulse.color_mm1wjjtk} insulin pump, and our team at Medically Modern is ready to welcome you.\n\nGet onboarded by scheduling your welcome call here:\nhttps://calendly.com/records-medicallymodern/welcome-call"
+    },
+    {
+      "id": 603171287,
+      "active": true,
+      "description": null,
+      "columnId": "color_mm1xzh1x",
+      "index": 6,
+      "from": "+13475037148",
+      "phoneColumn": "phone_mm1x44yk",
+      "message": "YOUR CGM IS APPROVED AND READY FOR SHIPMENT\n\nProvider {pulse.text_mm1x46et} sent us your prescription for your {pulse.color_mm1w7pmf}, and our team at Medically Modern is ready to welcome you.\n\nGet onboarded by scheduling your welcome call here:\nhttps://calendly.com/records-medicallymodern/welcome-call"
+    },
+    {
+      "id": 603172480,
+      "active": true,
+      "description": null,
+      "columnId": "color_mm1xzh1x",
+      "index": 7,
+      "from": "+13475037148",
+      "phoneColumn": "phone_mm1x44yk",
+      "message": "YOUR INSULIN PUMP & CGM IS APPROVED AND READY FOR SHIPMENT\n\nProvider {pulse.text_mm1x46et} sent us your prescription for your {pulse.color_mm1wjjtk} insulin pump and {pulse.color_mm1w7pmf}, and our team at Medically Modern is ready to welcome you.\n\nGet onboarded by scheduling your welcome call here:\nhttps://calendly.com/records-medicallymodern/welcome-call"
+    },
+    {
+      "id": 603173668,
+      "active": true,
+      "description": null,
+      "columnId": "color_mm1xzh1x",
+      "index": 8,
+      "from": "+13475037148",
+      "phoneColumn": "phone_mm1x44yk",
+      "message": "YOUR INSULIN PUMP SUPPLIES ARE APPROVED AND READY FOR SHIPMENT\n\nProvider {pulse.text_mm1x46et} sent us your prescription for your {pulse.color_mm1wjjtk} insulin pump supplies, and our team at Medically Modern is ready to welcome you.\n\nGet onboarded by scheduling your welcome call here:\nhttps://calendly.com/records-medicallymodern/welcome-call"
+    },
+    {
+      "id": 603174271,
+      "active": true,
+      "description": null,
+      "columnId": "color_mm1xzh1x",
+      "index": 9,
+      "from": "+13475037148",
+      "phoneColumn": "phone_mm1x44yk",
+      "message": "YOUR INSULIN PUMP SUPPLIES & CGM ARE APPROVED AND READY FOR SHIPMENT\n\nProvider {pulse.text_mm1x46et} sent us your prescription for your {pulse.color_mm1wjjtk} insulin pump supplies and {pulse.color_mm1w7pmf}, and our team at Medically Modern is ready to welcome you.\n\nGet onboarded by scheduling your welcome call here:\nhttps://calendly.com/records-medicallymodern/welcome-call"
+    }
+  ],
+  "workflow": {
+    "id": "7918318033",
+    "is_active": true,
+    "columnId": "color_mm1xtqvv",
+    "index": 0,
+    "from": "+13475037148",
+    "phoneColumn": "phone_mm1x44yk",
+    "fields": {
+      "208": "item.color_mm1xekaz.label",
+      "207": "item.color_mm1x9paw.label",
+      "204": "item.location_mm1xhw17.address",
+      "205": "item.color_mm1w7pmf.label",
+      "206": "item.color_mm1wjjtk.label"
+    },
+    "lexical": {
+      "root": {
+        "children": [
+          {
+            "children": [
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "Medically Modern --> SAVE OUR NUMBER",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "TO CONFIRM: ",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "Delivery Address -  ",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "variableKey": 204,
+                "type": "field",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "Order ",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "CGM - ",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "variableKey": 205,
+                "type": "field",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "Pump - ",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "variableKey": 206,
+                "type": "field",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "Infusion Sets - ",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "variableKey": 207,
+                "type": "field",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "  ",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "variableKey": 208,
+                "type": "field",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "HOW IT WORKS: ",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": "20-days before your next order we send you a text to confirm your address & order. We need an affirmative \"yes\" from you",
+                "type": "text",
+                "version": 1
+              },
+              {
+                "type": "linebreak",
+                "version": 1
+              },
+              {
+                "detail": 0,
+                "format": 0,
+                "mode": "normal",
+                "style": "",
+                "text": " ",
+                "type": "text",
+                "version": 1
+              }
+            ],
+            "direction": "ltr",
+            "format": "",
+            "indent": 0,
+            "type": "paragraph",
+            "version": 1
+          }
+        ],
+        "direction": "ltr",
+        "format": "",
+        "indent": 0,
+        "type": "root",
+        "version": 1
+      }
+    }
+  },
+  "labels": {
+    "note": "settings_str labels of the two trigger columns on the Welcome Call board, read 2026-10-19",
+    "color_mm1xzh1x": {
+      "0": "Beta Bionics",
+      "1": "General Diabetes",
+      "2": "Tandem",
+      "3": "Other - Pump",
+      "4": "Tandem Supplies Only",
+      "6": "Other - CGM",
+      "7": "Other - Pump & CGM",
+      "8": "Other - Supplies",
+      "9": "Other - Supplies & CGM"
+    },
+    "color_mm1xtqvv": {
+      "0": "Send"
+    }
+  }
+}

@@ -206,7 +206,9 @@ async function getNotificationHistory(itemId) {
 // fail, so no way to strand a patient behind a 90-day key and leave them with no
 // link at all. The cost is that an SMS which RingCentral accepted but reported
 // as failed can be re-sent once the window passes -- at-least-once, chosen
-// deliberately: a duplicate text is recoverable, a missing one is not.
+// deliberately: a duplicate text is recoverable, a missing one is not. (Since
+// October 2026 sendSMS looks for a 5xx'd message in RingCentral's store before
+// calling it failed, which leaves only the ones the store is slow to show.)
 const INTAKE_CLAIM_PENDING_TTL = 15 * 60;              // unconfirmed attempt
 const INTAKE_CLAIM_CONFIRMED_TTL = 60 * 60 * 24 * 90;  // matches notification history retention
 
@@ -226,6 +228,35 @@ async function confirmIntakeSms(itemId) {
   await r.set(`intake_sms:${itemId}`, new Date().toISOString(), "EX", INTAKE_CLAIM_CONFIRMED_TTL);
 }
 
+// ─── Welcome Call text claim ───
+// The same provisional claim as the intake text, keyed on the board change
+// (Monday's triggerUuid) rather than the item: a rep who resets Welcome Call
+// Text and presses Send again means to text again, and that is a new change.
+// The confirmed value is the record that it went out -- which text, when, and
+// RingCentral's id -- and holds no patient data.
+const WELCOME_CLAIM_PENDING_TTL = 15 * 60;
+const WELCOME_CLAIM_CONFIRMED_TTL = 60 * 60 * 24 * 90;
+
+async function claimWelcomeText(key) {
+  const r = getRedis();
+  if (!r) return true;
+  const res = await r.set(`welcome_text:${key}`, "pending", "EX", WELCOME_CLAIM_PENDING_TTL, "NX");
+  return res === "OK";
+}
+
+async function confirmWelcomeText(key, record) {
+  const r = getRedis();
+  if (!r) return;
+  await r.set(`welcome_text:${key}`, JSON.stringify(record), "EX", WELCOME_CLAIM_CONFIRMED_TTL);
+}
+
+// Only after a send that certainly did not go out, so Monday's retry can.
+async function releaseWelcomeText(key) {
+  const r = getRedis();
+  if (!r) return;
+  await r.del(`welcome_text:${key}`);
+}
+
 // ─── Health check ───
 async function redisHealthCheck() {
   const r = getRedis();
@@ -243,5 +274,6 @@ module.exports = {
   findPatientByPhoneCache, findPatientByUidCache, getUidIndex, indexPhone, indexUid,
   logNotification, getNotificationHistory,
   claimIntakeSms, confirmIntakeSms,
+  claimWelcomeText, confirmWelcomeText, releaseWelcomeText,
   redisHealthCheck
 };

@@ -1,6 +1,6 @@
 # Monday.com Webhook Configuration
 
-> Last updated: 2026-05-17
+> Last updated: 2026-10-19
 
 ## Webhook URL
 
@@ -25,6 +25,49 @@ The webhook URL itself is the secret. Monday.com stores the full URL (including 
 | Insurance | 18410601299 | 581302889 | `change_specific_column_value` | `color_mm1ws96t` | Stage advancer changes (2A–2E) |
 | Welcome Call | 18410804557 | 581302890 | `create_item` | — | Detects new items on Welcome Call board |
 | Welcome Call | 18410804557 | 581302892 | `change_specific_column_value` | `color_mm1ws96t` | Stage advancer changes (3A–3B) |
+
+### Welcome Call texts (built 2026-10-19, not yet switched on)
+
+Two more webhooks on the Welcome Call board replace the ten Monday automations that texted patients through the RingCentral integration. **They do not exist yet**: create them during the cut-over below.
+
+| Board | Board ID | Event | Config | Purpose |
+|---|---|---|---|---|
+| Welcome Call | 18410804557 | `change_specific_column_value` | `color_mm1xzh1x` (Autotext Type) | The "approved and ready for shipment" text, one per label |
+| Welcome Call | 18410804557 | `change_specific_column_value` | `color_mm1xtqvv` (Welcome Call Text) | The "SAVE OUR NUMBER / TO CONFIRM" text the Command Center's button sends |
+
+`backend/src/welcomeTexts.js` holds the ten messages, copied word for word from the automations, and sends each from +13475037148 (Corey Deutsch) to Primary Phone, as they did. `backend/test/fixtures/monday-welcome-sms-automations.json` is the automations as Monday exported them; the test fails if a message drifts from it.
+
+`WELCOME_TEXTS` on Railway decides what happens (`/health` shows it as `welcomeTexts`):
+
+- unset, or anything else: **off**. Events are logged and ignored.
+- `test`: only patients named `[TEST] …` or `TEST …` are texted.
+- `on`: every patient (still subject to `PRODUCTION_SMS_ENABLED`, like every text this service sends).
+
+The automations it replaces (deactivate, don't delete, so rollback is a toggle):
+
+| Automation | Trigger |
+|---|---|
+| 573200740 | Autotext Type → Beta Bionics |
+| 573214800 | Autotext Type → General Diabetes (described "OFF/aug26"; its setter 7918358818 is off, but this one was on) |
+| 573208150 | Autotext Type → Tandem |
+| 603170115 | Autotext Type → Other - Pump |
+| 573213734 | Autotext Type → Tandem Supplies Only |
+| 603171287 | Autotext Type → Other - CGM |
+| 603172480 | Autotext Type → Other - Pump & CGM |
+| 603173668 | Autotext Type → Other - Supplies |
+| 603174271 | Autotext Type → Other - Supplies & CGM |
+| 7918318033 | Welcome Call Text → Send |
+
+**Cut-over** (off-hours, like any structural board change):
+
+1. Set `WELCOME_TEXTS=test` and let Railway redeploy. Check `/health` says `"welcomeTexts": "test"`.
+2. Create the two webhooks (commands below). Real patients are still texted by the automations, and only by them.
+3. On a `TEST …` item whose Primary Phone is a team member's own mobile (a 555-01xx number can't receive a text), set Autotext Type, then press Send Welcome Call Text in the Command Center. Each text should arrive twice (once from the automation, once from here), word for word the same, both from (347) 503-7148. The logs show `[welcome-text] … sent (<label>)`. A RingCentral error naming the from number means this service's RingCentral login can't send from Corey's line: stop here.
+4. Deactivate the ten automations above, then set `WELCOME_TEXTS=on`. Between the two steps (the redeploy, about a minute), a change to either column texts no one; do it when no one is on the Welcome Call board.
+
+**Rollback**: set `WELCOME_TEXTS` to `off` and reactivate the ten automations. The webhooks can stay.
+
+What changes for the patient: nothing in the wording. Trailing spaces and line breaks at the very end of a message are trimmed. A text that RingCentral answers with a 5xx is looked up in its message store before it counts as failed (it often went out anyway); one that really failed is answered 500, so Monday redelivers it, once a minute for up to 30 minutes. Each change on the board is sent at most once, keyed on Monday's `triggerUuid` in Redis (`welcome_text:<uuid>`, 90 days, no patient data).
 
 ### Stage Advancer Columns
 
@@ -80,6 +123,16 @@ curl -s -X POST https://api.monday.com/v2 \
 curl -s -X POST https://api.monday.com/v2 \
   -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
   -d '{"query": "mutation { create_webhook(board_id: 18410804557, url: \"'"$URL"'\", event: change_specific_column_value, config: \"{\\\"columnId\\\":\\\"color_mm1ws96t\\\"}\") { id } }"}'
+
+# Welcome Call — Autotext Type (color_mm1xzh1x)
+curl -s -X POST https://api.monday.com/v2 \
+  -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
+  -d '{"query": "mutation { create_webhook(board_id: 18410804557, url: \"'"$URL"'\", event: change_specific_column_value, config: \"{\\\"columnId\\\":\\\"color_mm1xzh1x\\\"}\") { id } }"}'
+
+# Welcome Call — Welcome Call Text (color_mm1xtqvv)
+curl -s -X POST https://api.monday.com/v2 \
+  -H "Authorization: $MONDAY_TOKEN" -H "Content-Type: application/json" \
+  -d '{"query": "mutation { create_webhook(board_id: 18410804557, url: \"'"$URL"'\", event: change_specific_column_value, config: \"{\\\"columnId\\\":\\\"color_mm1xtqvv\\\"}\") { id } }"}'
 ```
 
 **Important**: The new code must be deployed and the `MONDAY_WEBHOOK_SECRET` env var must be set on Railway BEFORE creating webhooks. Monday sends a challenge request to verify the URL is live.
