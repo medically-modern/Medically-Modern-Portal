@@ -1012,16 +1012,22 @@ app.get("/portal", async (req, res) => {
   res.send(html);
 });
 
-app.listen(PORT, async () => {
-  console.log(`Portal backend running on port ${PORT}`);
-  console.log(`Monday: ${process.env.MONDAY_TOKEN ? "configured" : "MISSING"}`);
-  console.log(`Redis: ${process.env.REDIS_URL ? "configured" : "MISSING (will fall back to Monday API)"}`);
-  // While the Welcome Call texts are in test or on, make sure Monday is sending
-  // their two columns here (src/welcomeTexts.js). Not awaited: it logs its own
-  // outcome and never throws.
-  if (welcomeTextsMode(process.env) !== "off") {
-    ensureWelcomeTextWebhooks({ mondayQuery, secret: process.env.MONDAY_WEBHOOK_SECRET });
-  }
-  // Pre-generate OG preview images (10 PNGs cached in memory)
-  await preGenerateOgImages();
-});
+// Listens only when run as the server (`npm start` / `node src/index.js`), so
+// the tests in test/ can load the app and drive its routes without a port.
+if (require.main === module) {
+  app.listen(PORT, async () => {
+    console.log(`Portal backend running on port ${PORT}`);
+    console.log(`Monday: ${process.env.MONDAY_TOKEN ? "configured" : "MISSING"}`);
+    console.log(`Redis: ${process.env.REDIS_URL ? "configured" : "MISSING (will fall back to Monday API)"}`);
+    // While the Welcome Call texts are in test or on, make sure Monday is sending
+    // their two columns here (src/welcomeTexts.js). Not awaited: it logs its own
+    // outcome and never throws.
+    if (welcomeTextsMode(process.env) !== "off") {
+      ensureWelcomeTextWebhooks({ mondayQuery, secret: process.env.MONDAY_WEBHOOK_SECRET });
+    }
+    // Pre-generate OG preview images (10 PNGs cached in memory)
+    await preGenerateOgImages();
+  });
+}
+
+module.exports = { app };
