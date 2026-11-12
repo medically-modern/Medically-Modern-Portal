@@ -51,7 +51,7 @@ test("a new District Endocrine referral is texted the District Endocrine wording
   await arrive(9000000002);
   assert.equal(P.texts.length, 1);
   const msg = P.texts[0].message;
-  assert.match(msg, /^Hi Dana, it's Katie from Medically Modern\./);
+  assert.match(msg, /^Hi Dana, it's Janelle from Medically Modern\./);
   assert.ok(msg.includes("from District Endocrine"));
   assert.ok(msg.includes(`${PORTAL_BASE_URL}?p=${uidOf(9000000002)}`));
 });

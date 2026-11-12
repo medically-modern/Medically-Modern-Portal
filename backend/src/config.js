@@ -194,7 +194,7 @@ function firstNameOf(patientName) {
 // only notification on a dead end. Callers must treat null as "don't send".
 //
 // Two wordings. District Endocrine referrals get the text Medically Modern
-// wrote for them in September 2026: from Katie, by first name, naming the
+// wrote for them in September 2026: from Janelle (originally Katie), by first name, naming the
 // practice. Every other source on the text list gets the default below. Both
 // carry the full tracking link with nothing after it on its line: a phone that
 // folds trailing punctuation into the URL sends the patient to a tracker that
@@ -211,7 +211,7 @@ function buildIntakeSms(patientUid, { patientName = "", referralSource = "" } = 
 
   if (isDistrictEndocrineReferral(referralSource)) {
     const firstName = firstNameOf(patientName);
-    return `Hi${firstName ? ` ${firstName}` : ""}, it's Katie from Medically Modern. We received your prescription for your supplies from District Endocrine. We're working on processing your order.
+    return `Hi${firstName ? ` ${firstName}` : ""}, it's Janelle from Medically Modern. We received your prescription for your supplies from District Endocrine. We're working on processing your order.
 
 You can track your order here: ${PORTAL_BASE_URL}?p=${patientUid}
 
