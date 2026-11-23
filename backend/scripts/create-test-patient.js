@@ -5,11 +5,12 @@
 // Usage: MONDAY_TOKEN=xxx node scripts/create-test-patient.js
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
+const MONDAY_API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
 const MEDICAL_EVAL_BOARD = "18406060017";
 const MEDICAL_NECESSITY_GROUP = "group_mm1xf2jb";
 
 async function mondayQuery(query) {
-  const res = await fetch("https://api.monday.com/v2", {
+  const res = await fetch(MONDAY_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

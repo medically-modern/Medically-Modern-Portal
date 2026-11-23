@@ -35,7 +35,8 @@ function validateUid(uid) {
 }
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
-const API_URL = "https://api.monday.com/v2";
+// Monday's API address. A setting so the January cutover can point it at Friday (/v2); unset, it is Monday.
+const API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
 
 // The Friday forward (fridayForward.js, the same file josh-monday-automations and auto-doctor-database-search run):
 // every mutation Monday ACCEPTS below is handed to Friday afterwards, exactly as it was sent, so Friday's copy of the

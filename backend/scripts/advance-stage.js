@@ -6,6 +6,7 @@
 //         welcome_call, completed
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
+const MONDAY_API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
 
 const BOARDS = {
   MEDICAL_EVAL: "18406060017",
@@ -35,7 +36,7 @@ const TRANSITIONS = {
 };
 
 async function mondayQuery(query) {
-  const res = await fetch("https://api.monday.com/v2", {
+  const res = await fetch(MONDAY_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
