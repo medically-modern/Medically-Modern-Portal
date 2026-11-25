@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const { getItem, findPatientByUid, mondayQuery, updateColumn, fridayForward } = require("./monday");
+const { getItem, findPatientByUid, mondayQuery, updateColumn, fridayForward, fridayShadow } = require("./monday");
 const { BOARDS, PORTAL_BASE_URL, STAGE_COLUMNS, STAGE_MAP, REFERRAL_RECEIVED, SUBSCRIBER_WELCOME, MESSAGES, COMPLETED_GROUPS, PATIENT_UID_COLUMNS, REFERRAL_SOURCE_COLUMN, SCRIPT_MAX_PHASE, PHONE_COLUMN_SUBSCRIPTION, INTAKE_SMS_STAGE, INTAKE_SMS_REFERRAL_SOURCES, isTextableReferralSource, buildIntakeSms, manualIntakeSendDate } = require("./config");
 const { KINDS: SCRIPT_KINDS, readScriptFields, scriptKindsFor, scriptsAreOffered, scriptFilename, scriptsPayload, buildScriptPdf } = require("./script");
 const { cachePatientState, cachePatientScripts, getPatientState, findPatientByUidCache, getUidIndex, indexPhone, indexUid, logNotification, getNotificationHistory, claimIntakeSms, confirmIntakeSms, claimWelcomeText, confirmWelcomeText, releaseWelcomeText, redisHealthCheck } = require("./redis");
@@ -125,6 +125,8 @@ app.get("/health", async (req, res) => {
     redis: redis.connected ? "connected" : "disconnected",
     // the Friday forward's counters (ids and counts only, never a value): src/fridayForward.js
     friday: fridayForward.status(),
+    // the Friday read shadow's counts (never a value): src/fridayShadow.js
+    friday_shadow: fridayShadow.health(),
     // off | test | on -- whether the Welcome Call texts go out: src/welcomeTexts.js
     welcomeTexts: welcomeTextsMode(process.env)
   });

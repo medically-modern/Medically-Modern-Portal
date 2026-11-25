@@ -47,9 +47,19 @@ const API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
 const { createFridayForward } = require("./fridayForward");
 const fridayForward = createFridayForward({ env: process.env, log: (m) => console.log(m), service: "patient-intake-texts-backend" });
 
-// `forwardToFriday: false` keeps a call out of the Friday forward: the webhook
-// setup in welcomeTexts.js, whose variables carry this service's secret URL.
+// The Friday read shadow (fridayShadow.js, the same file every service that reads Monday carries): after a READ through
+// mondayQuery has Monday's clean answer, the read and that answer are handed to Friday's /v2/shadow, which runs it on
+// Friday and keeps how the two compare (counts and paths, never a value). Started on a later turn of the event loop,
+// never awaited, never throws, never retried: it cannot delay, change or fail a Monday read. Never a mutation. OFF unless
+// FRIDAY_SHADOW=1 (it reuses FRIDAY_URL / FRIDAY_API_KEY). Its counts are on /health.
+const { createFridayShadow } = require("./fridayShadow");
+const fridayShadow = createFridayShadow({ env: process.env, log: (m) => console.log(m), reader: "patient-intake-texts-backend" });
+
+// `forwardToFriday: false` keeps a call out of the Friday forward and the read shadow: the webhook setup in
+// welcomeTexts.js, whose variables carry this service's secret URL. Its one read (the board's `webhooks`) is that setup's
+// own, of an integration Friday doesn't serve, so it stays out of the shadow too.
 async function mondayQuery(query, variables = {}, { forwardToFriday = true } = {}) {
+  const startedAt = Date.now();
   const res = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -59,7 +69,9 @@ async function mondayQuery(query, variables = {}, { forwardToFriday = true } = {
     },
     body: JSON.stringify({ query, variables })
   });
-  const data = await res.json();
+  // The body as text, then parsed: the same errors as res.json(), and the read shadow gets Monday's answer as it came.
+  const text = await res.text();
+  const data = JSON.parse(text);
   if (data.errors) {
     throw new Error(`Monday API error: ${JSON.stringify(data.errors)}`);
   }
@@ -67,6 +79,8 @@ async function mondayQuery(query, variables = {}, { forwardToFriday = true } = {
   // ever reach the caller; a reply that isn't a clean yes (a 429 or 5xx body without `errors`) is never forwarded.
   if (forwardToFriday && res.ok && data && data.data) {
     try { fridayForward.onMutation({ query, variables, data: data.data }); } catch { /* never the Monday path's concern */ }
+    // and a read Monday answered goes to the read shadow, on a later turn, never awaited (it skips a mutation itself)
+    try { fridayShadow.onRead({ query, variables, apiVersion: "2024-10", status: res.status, text, ms: Date.now() - startedAt }); } catch { /* never the Monday path's concern */ }
   }
   return data.data;
 }
@@ -233,4 +247,4 @@ async function findPatientByUid(uid, { itemIdHint } = {}) {
   return null;
 }
 
-module.exports = { mondayQuery, getItem, findPatientByPhone, findPatientByUid, createItem, updateColumn, changeStage, moveItemToGroup, fridayForward };
+module.exports = { mondayQuery, getItem, findPatientByPhone, findPatientByUid, createItem, updateColumn, changeStage, moveItemToGroup, fridayForward, fridayShadow };
